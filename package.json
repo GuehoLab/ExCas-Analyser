@@ -1,0 +1,14 @@
+{
+  "name": "excas-analyzer-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local web server and MCP server for the ExCas-Analyzer web app in docs/",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "serve": "node local/serve.mjs 8080",
+    "mcp": "node local/mcp/server.mjs"
+  }
+}

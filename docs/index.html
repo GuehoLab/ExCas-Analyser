@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ExCas-Analyzer — Browser-based CRISPR Large Deletion Quantification</title>
+  <meta name="description" content="ExCas-Analyzer: a fully client-side tool for quantifying CRISPR-induced large deletions from paired-end amplicon sequencing. Your data never leaves the browser.">
+  <!-- Inline, so the browser does not request a /favicon.ico that is not there. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d6efd'/%3E%3Cpath d='M6 11h20M6 21h20' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M16 5v22' stroke='%23fff' stroke-width='2' stroke-dasharray='3 2.5'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar bg-white border-bottom sticky-top">
+  <div class="container container-narrow">
+    <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+      <span>ExCas-Analyzer</span>
+    </a>
+    <div class="d-flex align-items-center gap-3 small nav-links">
+      <a target="_blank" rel="noopener" href="#"><i class="bi bi-journal-text"></i> Paper</a>
+      <a id="link-github" target="_blank" rel="noopener" href="https://github.com/"><i class="bi bi-github"></i> GitHub</a>
+      <span class="text-secondary">ver.0</span>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container container-narrow">
+    <h1>ExCas-Analyzer</h1>
+    <p>A Javascript based browser tool for paired-end amplicon sequencing</p>
+  </div>
+</section>
+
+<!-- Page 1: input -->
+<div id="inputPage" class="page active">
+  <section class="py-3 py-md-4">
+    <div class="container container-narrow">
+      <div class="app-card p-3 p-md-4">
+        <form id="analysisForm" novalidate>
+
+          <!-- Validation errors -->
+          <div id="errorAlert" class="alert alert-danger d-none" role="alert" aria-live="assertive" tabindex="-1">
+            <div class="d-flex align-items-start gap-2">
+              <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+              <div class="flex-grow-1">
+                <strong>Please fix the following:</strong>
+                <ul id="errorAlertList" class="mb-0 mt-1 ps-3"></ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sequencing data -->
+          <div class="row g-3 g-md-4">
+            <div class="col-12 section-title">Sequencing Data</div>
+
+            <div class="col-12 col-md-6">
+              <div class="sample-head">Control sample (untreated)</div>
+
+              <label class="form-label" for="file-ctr-r1">Read 1 <span class="sub">(fastq)</span></label>
+              <div class="file-box mb-2">
+                <input class="form-control form-control-sm" id="file-ctr-r1" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+                <div class="form-text">.fastq / .fq / .gz</div>
+                <div class="file-name"></div>
+              </div>
+
+              <label class="form-label" for="file-ctr-r2">Read 2 <span class="sub">(fastq)</span></label>
+              <div class="file-box">
+                <input class="form-control form-control-sm" id="file-ctr-r2" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+                <div class="form-text">.fastq / .fq / .gz</div>
+                <div class="file-name"></div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <div class="sample-head">Cas9-treated sample</div>
+
+              <label class="form-label" for="file-mut-r1">Read 1 <span class="sub">(fastq)</span></label>
+              <div class="file-box mb-2">
+                <input class="form-control form-control-sm" id="file-mut-r1" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+                <div class="form-text">.fastq / .fq / .gz</div>
+                <div class="file-name"></div>
+              </div>
+
+              <label class="form-label" for="file-mut-r2">Read 2 <span class="sub">(fastq)</span></label>
+              <div class="file-box">
+                <input class="form-control form-control-sm" id="file-mut-r2" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+                <div class="form-text">.fastq / .fq / .gz</div>
+                <div class="file-name"></div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <p class="form-help mb-0">Gzipped files (<code>.gz</code>, including bgzip) are
+                unzipped in the browser. bzip2, xz and zstd are not supported.</p>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- Basic information -->
+          <div class="row g-3 g-md-4">
+            <div class="col-12 section-title">Basic Information</div>
+
+            <div class="col-12">
+              <label class="form-label" for="fullseq">Full reference sequence (5' to 3'):</label>
+              <textarea id="fullseq" class="form-control seq" rows="4" spellcheck="false"
+                placeholder="Paste the reference sequence containing the target site. FASTA headers (>) and line breaks are stripped automatically."></textarea>
+              <div class="form-help mt-1">
+                To detect large deletions, include several kb on both sides of the cleavage site.
+                Or upload a FASTA file:
+                <input type="file" id="reffile" accept=".fa,.fasta,.fna,.txt,.gz" style="display:inline-block;width:auto" class="ms-1">
+                <span id="reflen"></span>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="pams">Select PAM:</label>
+              <select id="pams" class="form-select form-select-sm">
+                <option value="NGG"     data-side="3" data-cut="3"  selected>SpCas9: 5'-NGG-3'</option>
+                <option value="NGT"     data-side="3" data-cut="3" >xCas9: 5'-NGT-3'</option>
+                <option value="NGAG"    data-side="3" data-cut="3" >SpCas9-EQR: 5'-NGAG-3'</option>
+                <option value="NNGRRT"  data-side="3" data-cut="3" >SaCas9: 5'-NNGRRT-3'</option>
+                <option value="NNAGAAW" data-side="3" data-cut="3" >StCas9: 5'-NNAGAAW-3'</option>
+                <option value="TTTV"    data-side="5" data-cut="18">AsCpf1/LbCpf1: 5'-TTTV-3' (staggered cut)</option>
+                <option value=""        data-side="0" data-cut=""  >No PAM &mdash; set offset manually</option>
+              </select>
+              <div class="form-help">The PAM is used only to locate the target and derive the cleavage site.</div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="rgenseq">Target DNA sequence <span class="sub">(5' to 3', without PAM)</span></label>
+              <input type="text" id="rgenseq" class="form-control form-control-sm seq" spellcheck="false" placeholder="e.g. GCCCCCCTTGAGCACACAGA">
+              <div class="form-help">Both strands are searched; coordinates and cleavage site are derived automatically.</div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="genename">Gene name</label>
+              <input type="text" id="genename" class="form-control form-control-sm" value="HPRT1">
+              <div class="form-help">Used as the SAM reference name and in output file names.</div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="samplename">Sample name</label>
+              <input type="text" id="samplename" class="form-control form-control-sm" value="HEK293T">
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- Detailed options (accordion) -->
+          <div class="accordion mb-4" id="optionsAccordion">
+            <div class="accordion-item border-0">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed px-0 py-2" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#detailedOptions"
+                  aria-expanded="false" aria-controls="detailedOptions">
+                  Detailed options
+                </button>
+              </h2>
+              <div id="detailedOptions" class="accordion-collapse collapse" data-bs-parent="#optionsAccordion">
+                <div class="accordion-body px-0 pt-2 pb-0">
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="K">k-mer size (K)</label>
+                      <input type="number" id="K" class="form-control form-control-sm" value="11" min="7" max="16">
+                      <div class="form-help">k-mer length for indexing the reference. Published setting is 11.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="cle">Cleavage offset <span class="sub">(from the target start)</span></label>
+                      <input type="number" id="cle" class="form-control form-control-sm" placeholder="auto">
+                      <div class="form-help">Leave blank to derive from the PAM and strand.</div>
+                    </div>
+
+                    <div class="col-12"><hr class="my-1"></div>
+                    <div class="col-12 form-help mb-0">
+                      These are CLI options #13 and #16&ndash;#22, shown at their CLI defaults
+                      (#14 <code>full_sam</code> is always off here, #15 always SAM). Leave them
+                      alone unless you have a reason to change them.
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="largeDelLen">Large deletion minimum length <span class="sub">(bp)</span></label>
+                      <input type="number" id="largeDelLen" class="form-control form-control-sm" value="100" min="1">
+                      <div class="form-help">#22 <code>large_del_len</code>. A deletion this long or longer inside
+                        one read is a large deletion; shorter ones are small indels. Default 100 (the paper's
+                        definition).</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="distCut">Cleavage-site tolerance <span class="sub">(bp)</span></label>
+                      <input type="number" id="distCut" class="form-control form-control-sm" value="1000" min="1">
+                      <div class="form-help">#13 <code>dist_cut</code>. How far a deletion breakpoint may be from the cut.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="minGap">Minimum mate gap <span class="sub">(bp)</span></label>
+                      <input type="number" id="minGap" class="form-control form-control-sm" value="400" min="1">
+                      <div class="form-help">#16 <code>min_gap</code>. Smallest gap between mates for a pair without a
+                        split read to count as a large deletion. An insert-size floor, not the 100 bp definition.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="anchorMin">Anchor quality floor</label>
+                      <input type="number" id="anchorMin" class="form-control form-control-sm" value="13" min="0">
+                      <div class="form-help">#17 <code>anchor_min</code>. Lowest split-read anchor score (length &minus;
+                        4&times;mismatches). 0 turns it off; 16 is strict.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="insMax">Maximum insertion length <span class="sub">(0 = unlimited)</span></label>
+                      <input type="number" id="insMax" class="form-control form-control-sm" value="0" min="0">
+                      <div class="form-help">#20 <code>ins_max</code>. Longest insertion still recorded as one.</div>
+                    </div>
+                    <div class="col-12 col-md-6 d-flex flex-column justify-content-end">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="cutBetween" checked>
+                        <label class="form-check-label" for="cutBetween">Cleavage site must fall between the mates <span class="sub">(#18)</span></label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="insFix" checked>
+                        <label class="form-check-label" for="insFix">Insertion alignment fix <span class="sub">(#19 ins_fix)</span></label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="report" checked>
+                        <label class="form-check-label" for="report">Generate the HTML report <span class="sub">(#21)</span></label>
+                      </div>
+                      <div class="form-help">With <code>ins_fix</code> off, most insertions of 9 bp or more are lost.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Example and submit buttons -->
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-primary btn-sm ex" type="button"
+                    data-gene="HPRT1" data-sample="SIM"
+                    data-target="AGCCCCCCTTGAGCACACAG">
+              <i class="bi bi-lightning-charge"></i> Load example &middot; HPRT1
+            </button>
+            <button class="btn btn-outline-secondary btn-sm ex-dl" type="button"
+                    data-gene="HPRT1">
+              <i class="bi bi-download"></i> Download example
+            </button>
+            <span class="form-help">simulated &middot; 40k pairs/sample &middot; 11&nbsp;MB</span>
+            <span class="form-help" id="demo-note"></span>
+            <button class="btn btn-primary btn-sm ms-auto" type="button" id="submit">
+              <i class="bi bi-play-fill"></i> Submit
+            </button>
+          </div>
+
+        </form>
+      </div><!-- .app-card -->
+    </div>
+  </section>
+</div><!-- #inputPage -->
+
+<!-- Page 2: progress -->
+<div id="progressPage" class="page">
+  <section class="py-3 py-md-4">
+    <div class="container container-narrow">
+      <div class="app-card p-3 p-md-4">
+
+        <div class="section-title mb-3">Analysis Progress</div>
+
+        <!-- Input summary, filled in by app.js -->
+        <div id="summary-box" class="d-none mb-4">
+          <label class="form-label">Reference sequence around the target site</label>
+          <div class="seqbox" id="seqctx"></div>
+          <div class="legend-key">
+            <i style="background:#c9e7c9;color:#1a6e2e">target</i>
+            <i style="background:#ffe08a;color:#8a6112">PAM</i>
+            <i style="color:#c9302c">&#9660; cleavage site</i>
+          </div>
+
+          <table class="table table-sm table-bordered mt-3">
+            <thead class="table-light">
+              <tr>
+                <th>Ref length</th><th>Target position</th><th>Strand</th>
+                <th>PAM</th><th>Cleavage site</th><th>K</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="num" id="s-reflen"></td>
+                <td class="num" id="s-pos"></td>
+                <td id="s-strand"></td>
+                <td class="num" id="s-pam"></td>
+                <td class="num" id="s-cut"></td>
+                <td class="num" id="s-k"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="progress-label">Control sample</div>
+        <div class="progress mb-2" style="height:22px">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" id="ctr-bar" role="progressbar" style="width:0%">0%</div>
+        </div>
+
+        <div class="progress-label">Cas9-treated sample</div>
+        <div class="progress mb-3" style="height:22px">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" id="mut-bar" role="progressbar" style="width:0%">0%</div>
+        </div>
+
+        <div class="form-help" id="stage">Preparing…</div>
+
+        <div class="mt-3">
+          <button class="btn btn-outline-secondary btn-sm" id="cancelBtn" type="button">
+            <i class="bi bi-x-circle"></i> Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div><!-- #progressPage -->
+
+<!-- Page 3: results -->
+<div id="resultsPage" class="page">
+  <section class="py-3 py-md-4">
+    <div class="container container-narrow">
+
+
+      <div class="app-card p-3 p-md-4">
+        <!-- Summary table -->
+        <div class="section-title mb-2">Summary</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle" id="summary-table">
+            <thead class="table-light">
+              <tr>
+                <th>Sample</th>
+                <th title="Read pairs in the FASTQ">Total reads</th>
+                <th title="Pairs that could not be aligned to the reference">Unmapped</th>
+                <th title="Pairs spanning the cleavage site, plus the split-read large deletions. The classes to the right are percentages of this.">Reads used in analysis</th>
+                <th title="Spans the cut with no insertion or deletion">WT</th>
+                <th title="Small insertion at the cut">Ins</th>
+                <th title="Small deletion at the cut">Del</th>
+                <th title="Substitution only">Sub</th>
+                <th title="Split-read deletion at or above the large-deletion length">LargeDel</th>
+                <th title="Insertion running off the end of the read (soft-clipped)">TermIns</th>
+              </tr>
+            </thead>
+            <tbody id="summary-body"></tbody>
+          </table>
+        </div>
+        <div class="form-help mb-4" id="summary-note"></div>
+
+        <!-- Figure 1: alignment summary bar chart -->
+        <div class="d-flex align-items-center mb-2">
+          <div class="section-title mb-0">Alignment Summary</div>
+          <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Y-axis scale">
+            <button type="button" class="btn btn-outline-secondary active" id="scale-linear">Linear</button>
+            <button type="button" class="btn btn-outline-secondary" id="scale-log">Log</button>
+          </div>
+        </div>
+        <div id="summary-chart" style="min-height:320px"></div>
+        <div id="summary-chart-fallback" class="alert alert-secondary d-none" role="status">
+          The summary chart could not be loaded (Plotly is fetched from a CDN).
+          The same figures are in the table above.
+        </div>
+        <div class="form-help mb-4">
+          Figure 1. Read pairs at each stage. <em>Used</em> (the pairs that can be
+          classified) is a small part of Aligned; the log scale shows both.
+        </div>
+
+        <!-- Figure 2: mutation pattern pie charts -->
+        <div class="section-title mb-2">Mutation Patterns</div>
+        <div class="row g-3 mb-2" id="pie-row">
+          <div class="col-12 col-md-6"><div id="pie-ctr" style="min-height:300px"></div></div>
+          <div class="col-12 col-md-6"><div id="pie-mut" style="min-height:300px"></div></div>
+        </div>
+        <div class="form-help mb-4" id="pie-note">
+          Figure 2. Share of each mutation class among <em>Reads used in analysis</em>,
+          per sample.
+        </div>
+
+        <!-- Figure 3: nucleotide composition -->
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+          <div class="section-title mb-0">Nucleotide Composition</div>
+          <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Sample">
+            <button type="button" class="btn btn-outline-secondary" id="nt-ctr">Control</button>
+            <button type="button" class="btn btn-outline-secondary active" id="nt-mut">Cas9-treated</button>
+          </div>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Window width">
+            <button type="button" class="btn btn-outline-secondary" id="nt-w15">&plusmn;15 bp</button>
+            <button type="button" class="btn btn-outline-secondary active" id="nt-w30">&plusmn;30 bp</button>
+            <button type="button" class="btn btn-outline-secondary" id="nt-w60">&plusmn;60 bp</button>
+          </div>
+        </div>
+        <div id="nt-chart" style="min-height:340px"></div>
+        <div id="nt-empty" class="alert alert-secondary d-none" role="status"></div>
+        <div class="form-help mb-4" id="nt-note"></div>
+
+        <!-- Figures 4 and 5: indel size / mutation position tabs -->
+        <div class="section-title mb-1">Indel Characterisation</div>
+        <p class="form-help mb-2">Figures 4 and 5, for the sample and window selected above.</p>
+
+        <ul class="nav nav-tabs mb-3" id="indel-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="indel-tab-size" type="button"
+                    role="tab" aria-controls="indel-pane-size" aria-selected="true">
+              Insertion / deletion size
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="indel-tab-pos" type="button"
+                    role="tab" aria-controls="indel-pane-pos" aria-selected="false">
+              Mutation position
+            </button>
+          </li>
+        </ul>
+
+        <div id="indel-pane-size" role="tabpanel" aria-labelledby="indel-tab-size">
+          <div id="indel-chart" style="min-height:340px"></div>
+          <div id="indel-empty" class="alert alert-secondary d-none" role="status"></div>
+          <div class="form-help mb-4" id="indel-note"></div>
+        </div>
+
+        <div id="indel-pane-pos" class="d-none" role="tabpanel" aria-labelledby="indel-tab-pos">
+          <div id="mutpos-chart" style="min-height:340px"></div>
+          <div id="mutpos-empty" class="alert alert-secondary d-none" role="status"></div>
+          <div class="form-help mb-4" id="mutpos-note"></div>
+        </div>
+
+        <!-- Result file downloads -->
+        <div id="download-box" class="d-none mb-4">
+          <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+            <div class="section-title mb-0">Result Files</div>
+            <button type="button" class="btn btn-primary btn-sm ms-auto" id="dl-all">
+              <i class="bi bi-file-earmark-zip"></i> Download all
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="dl-toggle"
+                    aria-expanded="false" aria-controls="dl-list">
+              Individual files
+            </button>
+          </div>
+          <div class="dl-group d-none" id="dl-list"></div>
+          <div class="form-help mt-1" id="dl-note"></div>
+        </div>
+
+        <!-- Figure 6: alignment viewer -->
+        <div class="section-title mb-1">Alignment Viewer</div>
+        <p class="form-help">Figure 6. Reads coloured by the cluster the tool assigned,
+          deletions drawn as a thin connecting line, mates grouped into one event.
+          Scroll to zoom, drag to pan.</p>
+
+        <div class="btn-group btn-group-sm flex-wrap mb-2" id="viewer-tracks"></div>
+
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2" id="viewer-tools">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="vw-pairs" checked>
+            <label class="form-check-label" for="vw-pairs">Group mates</label>
+          </div>
+          <label class="d-flex align-items-center gap-1 mb-0">
+            <span class="form-label mb-0">Colour by</span>
+            <select id="vw-colour" class="form-select form-select-sm" style="width:auto">
+              <option value="cluster">Cluster</option>
+              <option value="deletion">Large deletion</option>
+              <option value="strand">Strand</option>
+            </select>
+          </label>
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-secondary" id="vw-zin">+</button>
+            <button type="button" class="btn btn-outline-secondary" id="vw-zout">&minus;</button>
+            <button type="button" class="btn btn-outline-secondary" id="vw-reset">Fit</button>
+          </div>
+          <span class="form-help ms-auto mb-0" id="vw-info"></span>
+        </div>
+
+        <div id="viewer-mount" style="position:relative"></div>
+        <div id="viewer-tip" class="d-none"></div>
+
+        <p class="form-help mt-1 mb-0">
+          Red dashed = cleavage site &middot; blue band = protospacer &middot;
+          thick red = deletion of 50 bp or more &middot; purple tick = insertion.
+        </p>
+
+      </div><!-- .app-card -->
+
+      <div class="mt-3">
+        <button class="btn btn-outline-secondary btn-sm" id="backToInput" type="button">
+          <i class="bi bi-arrow-left"></i> New analysis
+        </button>
+      </div>
+    </div>
+  </section>
+</div><!-- #resultsPage -->
+
+<!-- Footer -->
+<footer class="site-footer">
+  <div class="container container-narrow">
+    <p class="mb-1">...</p>
+    <p class="mb-0 text-muted">
+      <a id="link-issues" href="https://github.com/" target="_blank" rel="noopener">Report an issue</a>
+    </p>
+  </div>
+</footer>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-basic-dist-min@2.35.2/plotly-basic.min.js"></script>
+<script src="vendor/fflate.min.js"></script>
+<!-- Exposes viewer.js to app.js as window.ExCasViewer; runs after app.js, before results are drawn. -->
+<script type="module">
+  import * as ExCasViewer from './viewer.js';
+  window.ExCasViewer = ExCasViewer;
+</script>
+<script src="analysis-client.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

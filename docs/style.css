@@ -1,0 +1,243 @@
+/* ExCas-Analyzer page styles: only what Bootstrap 5.3.3 does not provide. */
+
+/* ---- Design tokens ---- */
+:root {
+  --border: #e5e7eb;
+  --bg-muted: #f8f9fa;
+  --bg-card: #ffffff;
+  --bg-page: #fbfbfb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --accent: #0d6efd;           /* Bootstrap primary; the only accent colour */
+  --accent-hover: #0b5ed7;
+  --seq-target: #c9e7c9;
+  --seq-target-text: #1a6e2e;
+  --seq-pam: #ffe08a;
+  --seq-pam-text: #8a6112;
+  --seq-cut: #c9302c;
+}
+
+/* ---- Base ---- */
+html, body { height: 100%; }
+
+body {
+  background: var(--bg-page);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ---- Page switching: only the .active page is shown ---- */
+.page  { display: none; }
+.active { display: block; }
+
+/* ---- Narrow container ---- */
+@media (min-width: 992px) {
+  .container-narrow { max-width: 980px; }
+}
+
+/* ---- Navbar ---- */
+.navbar-brand span {
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.nav-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: .85rem;
+}
+.nav-links a:hover { color: var(--accent); }
+
+/* ---- Hero ---- */
+.hero {
+  padding: 2rem 0 0.5rem;
+  text-align: center;
+}
+.hero h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 .25rem;
+}
+.hero p {
+  font-size: .95rem;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
+}
+
+/* ---- Card ---- */
+.app-card {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .04);
+}
+
+/* ---- Section titles ---- */
+.section-title {
+  font-weight: 600;
+  font-size: .95rem;
+  color: var(--text-primary);
+  margin-bottom: .25rem;
+}
+
+/* ---- Form controls ---- */
+.form-label {
+  font-weight: 500;
+  font-size: .85rem;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.form-label .sub {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.form-help, .form-text {
+  color: var(--text-secondary);
+  font-size: .8rem;
+}
+
+/* ---- File drop zones ---- */
+.file-box {
+  border: 1px dashed var(--border);
+  background: var(--bg-muted);
+  border-radius: 12px;
+  padding: 12px 14px;
+  transition: border-color .2s ease, background .2s ease;
+}
+.file-box:focus-within,
+.file-box.drag-over {
+  border-color: var(--accent);
+  background: #f5f9ff;
+}
+.file-box .form-control-sm {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: .85rem;
+}
+.file-box .file-name {
+  font-size: .8rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+/* ---- Sequence input and display ---- */
+.seq {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+               Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: .2px;
+  resize: vertical;
+  min-height: 72px;
+  white-space: pre-wrap;
+  font-size: .82rem;
+}
+
+.seqbox {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+               Consolas, monospace;
+  font-size: .8rem;
+  line-height: 1.9;
+  word-break: break-all;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.seqbox .tgt  { background: var(--seq-target); color: var(--seq-target-text); font-weight: 700; }
+.seqbox .pam  { background: var(--seq-pam);    color: var(--seq-pam-text);    font-weight: 700; }
+.seqbox .cut  { color: var(--seq-cut); font-weight: 700; }
+
+.legend-key {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.legend-key i {
+  font-style: normal;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-right: 4px;
+}
+
+/* ---- Sample headings (control / treated columns) ---- */
+.sample-head {
+  font-size: .85rem;
+  font-weight: 600;
+  color: #31708f;
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---- Numeric table cells ---- */
+.num {
+  font-family: "IBM Plex Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Progress bars ---- */
+.progress-label {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+/* ---- Detailed options accordion ---- */
+.accordion-button:not(.collapsed) {
+  background: var(--bg-muted);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+.accordion-button:focus {
+  box-shadow: none;
+  border-color: var(--border);
+}
+.accordion-body {
+  font-size: .85rem;
+}
+
+/* ---- Result file download buttons ---- */
+.dl-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ---- Footer ---- */
+.site-footer {
+  margin-top: 3rem;
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--border);
+  font-size: .8rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ---- Small screens ---- */
+@media (max-width: 700px) {
+  .hero h1 { font-size: 1.3rem; }
+}
+
+/* ---- Alignment viewer and its hover tooltip ---- */
+#viewer-mount canvas { display: block; width: 100%; border: 1px solid var(--border);
+                       border-radius: 6px; background: #fff; cursor: grab; }
+#viewer-mount canvas:active { cursor: grabbing; }
+
+#viewer-tip {
+  position: absolute; z-index: 20; pointer-events: none;
+  max-width: 22rem; padding: .5rem .6rem;
+  font-size: .75rem; line-height: 1.45;
+  background: #1f2937; color: #f9fafb;
+  border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+#viewer-tip .r { display: flex; gap: .75rem; justify-content: space-between; }
+#viewer-tip .r span:first-child { color: #9ca3af; }
