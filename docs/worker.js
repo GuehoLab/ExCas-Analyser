@@ -108,7 +108,7 @@ self.onmessage = async (ev) => {
        'number', 'number', 'number',
        'string', 'string', 'number', 'string', 'number', 'number',
        'number', 'number', 'number', 'number', 'number', 'number',
-       'number'],
+       'number', 'number', 'number'],
       ['/work/' + names.ref, '/work/' + names.ctr1, '/work/' + names.ctr2,
        '/work/' + names.mut1, '/work/' + names.mut2,
        params.targetStart - 1, params.targetEnd - 1, params.cleavage,
@@ -116,7 +116,8 @@ self.onmessage = async (ev) => {
        params.distCut, params.fullSam ? 1 : 0,
        params.minGap, params.anchorMin, params.cutBetween ? 1 : 0,
        params.insFix ? 1 : 0, params.insMax, params.report ? 1 : 0,
-       params.largeDelLen]);
+       params.largeDelLen, params.clipRescue ? 1 : 0,
+       params.commonMode === 'kmeans' ? 1 : 0]);
 
     if (rc !== 0) {
       // The core prints the reason; show its error lines, or the end of its output.
@@ -150,7 +151,7 @@ self.onmessage = async (ev) => {
 function mapStage(line) {
   if (line.includes('k-mer hashtable finished')) return { stage: 'run',    message: 'Aligning the control sample…' };
   if (line.includes('Control sample alignment end')) return { stage: 'run2', message: 'Aligning the Cas9-treated sample…' };
-  if (line.includes('Cas9 Mutation sample alignment end')) return { stage: 'post', message: 'Clustering and false-positive removal…' };
+  if (line.includes('Cas9 Mutation sample alignment end')) return { stage: 'post', message: 'Removing deletions common with the control…' };
   if (line.includes('post process end')) return { stage: 'report', message: 'Writing the report…' };
   return null;
 }
@@ -166,7 +167,17 @@ function parseMetrics(stdout) {
   const totals  = all(/total_read (\d+)/g);
   const rates   = all(/alignment_rate ([\d.]+)/g);
 
+  // Clip rescue prints one line per sample that had terminal-clip pairs; the control's
+  // comes before the end of its alignment.
+  const split  = stdout.indexOf('Control sample alignment end');
+  const rescue = (txt) => {
+    const m = txt.match(/clip rescue: (\d+) of (\d+) terminal-clip pairs matched a small indel seen with full anchors \((\d+) deletion, (\d+) insertion\)/);
+    return m ? { rescued: +m[1], clipped: +m[2], del: +m[3], ins: +m[4] } : null;
+  };
+
   return {
+    ctrRescue: split >= 0 ? rescue(stdout.slice(0, split)) : null,
+    mutRescue: split >= 0 ? rescue(stdout.slice(split)) : null,
     ctrAligned: aligned[0] ?? null,
     ctrTotal: totals[0] ?? null,
     ctrAlignRate: rates[0] ?? null,

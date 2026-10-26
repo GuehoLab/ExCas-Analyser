@@ -34,10 +34,10 @@
   var demoNote   = document.getElementById('demo-note');
 
   // progress page
-  var ctrBar    = document.getElementById('ctr-bar');
-  var mutBar    = document.getElementById('mut-bar');
-  var stageEl   = document.getElementById('stage');
-  var cancelBtn = document.getElementById('cancelBtn');
+  var ctrBar     = document.getElementById('ctr-bar');
+  var mutBar     = document.getElementById('mut-bar');
+  var stageEl    = document.getElementById('stage');
+  var cancelBtn  = document.getElementById('cancelBtn');
 
   // results page
   var backBtn   = document.getElementById('backToInput');
@@ -55,8 +55,9 @@
   });
 
   // run state
-  var client        = null;
-  var lastRun       = null;   // the worker's 'done' payload for the last run
+  var clients       = [];     // the AnalysisClients still running
+  var lastRun       = null;   // the worker's 'done' payload for the results on show
+  var batchRuns     = [];     // per treated sample of the last batch: { params, result } or { params, error }
   var refSequence   = '';
   var _exampleFiles = null;  // the loaded example's files; null once the user picks a file
 
@@ -391,15 +392,16 @@
   }
 
   // Checks a file as soon as it is chosen. accept="" only filters the file picker; it does
-  // not stop drag-and-drop or "All files".
-  function wireFileTypeGuard(inputEl, label) {
+  // not stop drag-and-drop or "All files". label may be a function, for rows that get
+  // renumbered. keepExample: an added treated row, which the example does not fill.
+  function wireFileTypeGuard(inputEl, label, keepExample) {
     if (!inputEl) return;
     inputEl.addEventListener('change', function () {
       // a manual selection replaces any example data that was loaded
-      if (inputEl.files.length) _exampleFiles = null;
+      if (inputEl.files.length && !keepExample) _exampleFiles = null;
 
       if (!inputEl.files.length) return;
-      var problem = fastqProblem(inputEl.files[0], label);
+      var problem = fastqProblem(inputEl.files[0], typeof label === 'function' ? label() : label);
       if (problem) {
         showError(problem);
         inputEl.value = '';
@@ -413,8 +415,92 @@
   }
   wireFileTypeGuard(fileCtrR1, 'Control Read 1');
   wireFileTypeGuard(fileCtrR2, 'Control Read 2');
-  wireFileTypeGuard(fileMutR1, 'Cas9-treated Read 1');
-  wireFileTypeGuard(fileMutR2, 'Cas9-treated Read 2');
+  wireFileTypeGuard(fileMutR1, function () { return mutLabel(0, 1); });
+  wireFileTypeGuard(fileMutR2, function () { return mutLabel(0, 2); });
+
+  // ---- treated-sample rows (batch mode) ----
+  // Row 1 is in index.html; more are cloned from #mut-row-template, up to MAX_SAMPLES.
+  // Each row has its own sample name and Read 1 / Read 2; the control, reference and
+  // target are shared.
+  var MAX_SAMPLES = 4;
+  var mutRowsEl = document.getElementById('mut-rows');
+  var rowTpl    = document.getElementById('mut-row-template');
+  var addRowBtn = document.getElementById('add-sample');
+  var rowSerial = 1;   // makes the ids of added rows' inputs unique
+
+  function mutRows() {
+    return mutRowsEl ? Array.prototype.slice.call(mutRowsEl.querySelectorAll('.mut-row')) : [];
+  }
+
+  // 'Cas9-treated Read 1', with the sample number once there is more than one sample
+  function mutLabel(i, read) {
+    return 'Cas9-treated Read ' + read + (mutRows().length > 1 ? ' (sample ' + (i + 1) + ')' : '');
+  }
+
+  // Numbers the rows, and turns the add button off at MAX_SAMPLES.
+  function renumberRows() {
+    var rows = mutRows();
+    rows.forEach(function (row, i) {
+      var t = row.querySelector('.mut-row-title');
+      if (t) t.textContent = 'Sample ' + (i + 1);
+    });
+    if (addRowBtn) addRowBtn.disabled = rows.length >= MAX_SAMPLES;
+  }
+
+  // The first SampleN not already taken, as an added row's default name.
+  function freeSampleName() {
+    var used = {};
+    mutRows().forEach(function (r) { used[r.querySelector('.mut-name').value.trim().toLowerCase()] = true; });
+    for (var n = mutRows().length + 1; ; n++) if (!used['sample' + n]) return 'Sample' + n;
+  }
+
+  function addMutRow() {
+    if (!mutRowsEl || !rowTpl || mutRows().length >= MAX_SAMPLES) return null;
+    var row  = rowTpl.content.firstElementChild.cloneNode(true);
+    var id   = ++rowSerial;
+    var name = row.querySelector('.mut-name');
+    var r1   = row.querySelector('.mut-r1');
+    var r2   = row.querySelector('.mut-r2');
+    var lab  = row.querySelectorAll('label.form-label');
+    name.id = 'samplename-' + id; r1.id = 'file-mut-r1-' + id; r2.id = 'file-mut-r2-' + id;
+    lab[0].htmlFor = name.id; lab[1].htmlFor = r1.id; lab[2].htmlFor = r2.id;
+    name.value = freeSampleName();
+    mutRowsEl.appendChild(row);
+    renumberRows();
+
+    var index = function () { return mutRows().indexOf(row); };
+    wireDropZone(r1);
+    wireDropZone(r2);
+    wireFileTypeGuard(r1, function () { return mutLabel(index(), 1); }, true);
+    wireFileTypeGuard(r2, function () { return mutLabel(index(), 2); }, true);
+    row.querySelector('.mut-remove').addEventListener('click', function () {
+      row.parentNode.removeChild(row);
+      renumberRows();
+    });
+    return row;
+  }
+
+  function removeAddedRows() {
+    mutRows().slice(1).forEach(function (r) { r.parentNode.removeChild(r); });
+    renumberRows();
+  }
+
+  if (addRowBtn) {
+    addRowBtn.addEventListener('click', function () {
+      var row = addMutRow();
+      if (row) row.querySelector('.mut-name').select();
+    });
+  }
+
+  // A row's Read 1 / Read 2: the loaded example's for row 1, else what the inputs hold.
+  function rowFiles(row, i) {
+    if (i === 0 && _exampleFiles) return { r1: _exampleFiles.mutR1, r2: _exampleFiles.mutR2 };
+    var a = row.querySelector('.mut-r1'), b = row.querySelector('.mut-r2');
+    return { r1: (a && a.files[0]) || null, r2: (b && b.files[0]) || null };
+  }
+
+  // Characters that cannot go in the output file and folder names.
+  var BAD_NAME = /[\\\/:*?"<>|]/;
 
   // The distinct characters in seq other than A, T, C, G and N. Expects whitespace already
   // stripped.
@@ -443,18 +529,20 @@
   function validateInputs() {
     var errs = [];
 
-    // files
+    // files: the shared control, then each treated row
     var picks = _exampleFiles ? [
       { f: _exampleFiles.ctrR1, label: 'Control Read 1' },
-      { f: _exampleFiles.ctrR2, label: 'Control Read 2' },
-      { f: _exampleFiles.mutR1, label: 'Cas9-treated Read 1' },
-      { f: _exampleFiles.mutR2, label: 'Cas9-treated Read 2' }
+      { f: _exampleFiles.ctrR2, label: 'Control Read 2' }
     ] : [
       { f: fileCtrR1 && fileCtrR1.files[0], label: 'Control Read 1' },
-      { f: fileCtrR2 && fileCtrR2.files[0], label: 'Control Read 2' },
-      { f: fileMutR1 && fileMutR1.files[0], label: 'Cas9-treated Read 1' },
-      { f: fileMutR2 && fileMutR2.files[0], label: 'Cas9-treated Read 2' }
+      { f: fileCtrR2 && fileCtrR2.files[0], label: 'Control Read 2' }
     ];
+    var rows = mutRows();
+    if (rows.length > MAX_SAMPLES) errs.push('A batch holds at most ' + MAX_SAMPLES + ' treated samples.');
+    rows.forEach(function (row, i) {
+      var rf = rowFiles(row, i);
+      picks.push({ f: rf.r1, label: mutLabel(i, 1) }, { f: rf.r2, label: mutLabel(i, 2) });
+    });
 
     var missing = picks.filter(function (p) { return !p.f; });
     if (missing.length === picks.length) {
@@ -510,7 +598,19 @@
     }
 
     if (geneIn && !geneIn.value.trim())   errs.push('Gene name is required.');
-    if (sampleIn && !sampleIn.value.trim()) errs.push('Sample name is required.');
+
+    // Sample names name each run's files, and its folder in the batch zip, so they must be
+    // present, unique and usable in a file name.
+    var seen = {};
+    rows.forEach(function (row, i) {
+      var name = row.querySelector('.mut-name').value.trim();
+      var who  = rows.length > 1 ? 'Sample ' + (i + 1) + ': sample name' : 'Sample name';
+      if (!name) { errs.push(who + ' is required.'); return; }
+      if (BAD_NAME.test(name)) errs.push(who + ' "' + name + '" cannot contain \\ / : * ? " < > |.');
+      var key = name.toLowerCase();
+      if (seen[key]) errs.push(who + ' "' + name + '" is already used by sample ' + seen[key] + '.');
+      else seen[key] = i + 1;
+    });
 
     // numeric options
     var kErr = intProblem(kIn, 'k-mer size (K)', 7, 16);
@@ -712,6 +812,8 @@
           refSequence = seq;
           if (refLenSpan) refLenSpan.textContent = seq.length.toLocaleString() + ' bp';
 
+          // the example is a single treated sample
+          removeAddedRows();
           injectFiles(loaded);
 
           if (geneIn)    geneIn.value    = gene;
@@ -798,26 +900,26 @@
 
     {
       var seq    = refSequence;
-      var target = rgenseqIn ? rgenseqIn.value.trim().toUpperCase() : '';
+      // read as validateInputs() reads it: whitespace removed, uppercased
+      var target = rgenseqIn ? parseFasta(rgenseqIn.value) : '';
       var gene   = geneIn ? geneIn.value.trim() : '';
-      var sample = sampleIn ? sampleIn.value.trim() : '';
       var K      = kIn ? (parseInt(kIn.value) || 11) : 11;
 
-      // files come from the loaded example if there is one, else from the file inputs
-      var ctrR1, ctrR2, mutR1, mutR2, rFile;
+      // the control comes from the loaded example if there is one, else from the inputs
+      var ctrR1, ctrR2, rFile;
       if (_exampleFiles) {
         ctrR1 = _exampleFiles.ctrR1;
         ctrR2 = _exampleFiles.ctrR2;
-        mutR1 = _exampleFiles.mutR1;
-        mutR2 = _exampleFiles.mutR2;
-        rFile = _exampleFiles.ref;
       } else {
         ctrR1 = fileCtrR1 && fileCtrR1.files[0] ? fileCtrR1.files[0] : null;
         ctrR2 = fileCtrR2 && fileCtrR2.files[0] ? fileCtrR2.files[0] : null;
-        mutR1 = fileMutR1 && fileMutR1.files[0] ? fileMutR1.files[0] : null;
-        mutR2 = fileMutR2 && fileMutR2.files[0] ? fileMutR2.files[0] : null;
-        rFile = refFileIn && refFileIn.files[0]  ? refFileIn.files[0] : null;
       }
+
+      // one job per treated row, run in order against the same control
+      var jobs = mutRows().map(function (row, i) {
+        var rf = rowFiles(row, i);
+        return { sample: row.querySelector('.mut-name').value.trim(), mutR1: rf.r1, mutR2: rf.r2 };
+      });
 
       // validateInputs() has already checked that this resolves
       var loc = resolveLocation(seq, target);
@@ -835,22 +937,19 @@
       console.log('[app.js] starting analysis: gene=%s st=%d ed=%d cle=%d K=%d', gene, st, ed, cle, K);
 
       showPage('progress');
-      if (ctrBar) { ctrBar.style.width = '0%'; ctrBar.textContent = '0%'; }
-      if (mutBar) { mutBar.style.width = '0%'; mutBar.textContent = '0%'; }
-      if (stageEl) stageEl.textContent = 'Preparing…';
       fillSummary(seq, loc, K);
       lastRun = null;
 
-      // Options are the core's CLI arguments #13–#22, falling back to its defaults. #15
+      // Options are the core's CLI arguments #13–#24, falling back to its defaults. #15
       // (output format) is fixed to SAM by the wasm entry point.
-      var params = {
+      var commonSel = document.getElementById('commonMode');
+      var base = {
         gene:        gene,
-        sample:      sample,
         targetStart: st,
         targetEnd:   ed,
         cleavage:    cle,
         k:           K,
-        distCut:     numOpt('distCut', 1000),
+        distCut:     numOpt('distCut', 8000),
         // always off: the full alignment SAM is too large to hold in a browser tab
         fullSam:     false,
         minGap:      numOpt('minGap', 400),
@@ -859,48 +958,174 @@
         insFix:      boolOpt('insFix', true),
         insMax:      numOpt('insMax', 0),
         report:      boolOpt('report', true),
-        largeDelLen: numOpt('largeDelLen', 100)
+        largeDelLen: numOpt('largeDelLen', 50),
+        clipRescue:  boolOpt('clipRescue', true),
+        commonMode:  commonSel && commonSel.value === 'kmeans' ? 'kmeans' : 'local'
       };
 
-      // Passed as File objects; the worker reads and unzips them. labels name each file in
-      // error messages.
-      var files = { ref: rFile, ctr1: ctrR1, ctr2: ctrR2, mut1: mutR1, mut2: mutR2 };
+      runBatch(jobs, base, { ref: rFile, ctr1: ctrR1, ctr2: ctrR2 });
+    }
+    return true;
+  }
+
+  // How many samples run at once: the "Run at once" choice, or for Auto as many as fit
+  // in memory and processors. A run needs about its uncompressed FASTQs plus 1 GB;
+  // gzipped files are taken as 4 times their size. navigator.deviceMemory is the
+  // browser's estimate in GB (Chrome reports 8 at most; elsewhere 4 is assumed).
+  function parallelRuns(jobs, shared) {
+    var sel  = document.getElementById('parallel');
+    var pick = sel ? sel.value : 'auto';
+    if (pick !== 'auto') return Math.max(1, Math.min(jobs.length, parseInt(pick, 10) || 1));
+
+    var GB = 1024 * 1024 * 1024;
+    var size = function (f) { return f ? f.size * (/\.gz$/i.test(f.name) ? 4 : 1) : 0; };
+    var perRun = 0;
+    jobs.forEach(function (j) {
+      perRun = Math.max(perRun, size(shared.ctr1) + size(shared.ctr2) + size(j.mutR1) + size(j.mutR2) + GB);
+    });
+    var budget = (navigator.deviceMemory || 4) * 0.75 * GB;
+    var cpus   = navigator.hardwareConcurrency || 2;
+    return Math.max(1, Math.min(jobs.length, cpus, Math.floor(budget / perRun)));
+  }
+
+  // Runs the jobs, up to parallelRuns() at a time, each in its own worker; each run uses
+  // one thread. The control is analysed again with each sample, because the core compares
+  // the two in one run. A sample that fails is recorded and skipped while the others
+  // carry on, as CRISPRessoBatch --skip_failed does.
+  function runBatch(jobs, base, shared) {
+    var parallel = parallelRuns(jobs, shared);
+    var results  = new Array(jobs.length);   // { params, result } or { params, error }
+    var started = 0, finished = 0;
+    var rows = setupProgress(jobs, parallel);
+    clients = [];
+
+    function start(i) {
+      var job = jobs[i];
+      var params = Object.assign({}, base, { sample: job.sample });
+
+      // Passed as File objects; the worker reads and unzips them. labels name each file
+      // in error messages.
+      var files = { ref: shared.ref, ctr1: shared.ctr1, ctr2: shared.ctr2,
+                    mut1: job.mutR1, mut2: job.mutR2 };
       var labels = {
-        ref:  'Reference FASTA (' + rFile.name + ')',
-        ctr1: 'Control Read 1 (' + ctrR1.name + ')',
-        ctr2: 'Control Read 2 (' + ctrR2.name + ')',
-        mut1: 'Cas9-treated Read 1 (' + mutR1.name + ')',
-        mut2: 'Cas9-treated Read 2 (' + mutR2.name + ')'
+        ref:  'Reference FASTA (' + shared.ref.name + ')',
+        ctr1: 'Control Read 1 (' + shared.ctr1.name + ')',
+        ctr2: 'Control Read 2 (' + shared.ctr2.name + ')',
+        mut1: 'Cas9-treated Read 1 (' + job.mutR1.name + ')',
+        mut2: 'Cas9-treated Read 2 (' + job.mutR2.name + ')'
       };
-
       console.log('[app.js] starting analysis', params);
+      rows[i].set(0, 'Preparing…');
 
-      client = new AnalysisClient({
-        onProgress: function (pct, message) {
-          // Both samples run in one call: the control bar shows the first half of the
-          // progress, the treated bar the second.
+      var c = new AnalysisClient({
+        onProgress: function (pct, message) { rows[i].set(pct, message); },
+        onDone: function (result) {
+          console.log('[app.js] %s complete in %ss', job.sample, (result.elapsedMs / 1000).toFixed(1));
+          rows[i].end(true, 'Done');
+          results[i] = { params: params, result: result };
+          ended();
+        },
+        onError: function (msg) {
+          console.warn('[app.js] %s failed: %s', job.sample, msg);
+          rows[i].end(false, 'Failed: ' + msg);
+          results[i] = { params: params, error: msg };
+          ended();
+        }
+      });
+      clients.push(c);
+      c.start(params, files, labels);
+    }
+
+    // keeps `parallel` runs going until every job has started
+    function fill() {
+      while (started < jobs.length && started - finished < parallel) start(started++);
+    }
+
+    function ended() {
+      finished++;
+      if (finished < jobs.length) { fill(); return; }
+      clients = [];
+      var failed = results.filter(function (r) { return r.error; });
+      if (failed.length === jobs.length) {
+        showError(jobs.length > 1
+          ? failed.map(function (r) { return r.params.sample + ': ' + r.error; })
+          : 'Analysis error: ' + failed[0].error);
+        if (submitBtn) submitBtn.disabled = false;
+        showPage('input');
+        return;
+      }
+      finishBatch(results);
+    }
+
+    fill();
+  }
+
+  // The progress page's bars. One sample: the control and treated bars, since the core
+  // aligns the control first. A batch: one bar per sample. Returns a controller per job,
+  // with set(pct, message) and end(ok, message).
+  function setupProgress(jobs, parallel) {
+    var single = document.getElementById('single-progress');
+    var batch  = document.getElementById('batch-progress');
+    var list   = document.getElementById('batch-progress-rows');
+    var note   = document.getElementById('batch-progress-note');
+    var many   = jobs.length > 1;
+    if (single) single.classList.toggle('d-none', many);
+    if (batch)  batch.classList.toggle('d-none', !many);
+
+    if (!many) {
+      setBar(ctrBar, 0); setBar(mutBar, 0);
+      if (stageEl) stageEl.textContent = 'Preparing…';
+      return [{
+        set: function (pct, message) {
           var p = Math.max(0, Math.min(100, pct));
           setBar(ctrBar, Math.min(100, p * 2));
           setBar(mutBar, Math.max(0, (p - 50) * 2));
           if (stageEl) stageEl.textContent = message || '';
         },
-        onDone: function (result) {
-          console.log('[app.js] analysis complete in', (result.elapsedMs / 1000).toFixed(1), 's');
-          setBar(ctrBar, 100); setBar(mutBar, 100);
-          if (stageEl) stageEl.textContent = 'Done!';
-          lastRun = result;
-          finishResults(result, params);
-        },
-        onError: function (msg) {
-          showError('Analysis error: ' + msg);
-          if (submitBtn) submitBtn.disabled = false;
-          showPage('input');
+        end: function (ok, message) {
+          if (ok) { setBar(ctrBar, 100); setBar(mutBar, 100); }
+          if (stageEl) stageEl.textContent = ok ? 'Done!' : message;
         }
-      });
-
-      client.start(params, files, labels);
+      }];
     }
-    return true;
+
+    if (note) {
+      note.textContent = jobs.length + ' samples, ' + parallel + ' at a time' +
+        (parallel > 1 ? ' (each in its own worker).' : '.');
+    }
+    if (list) list.innerHTML = '';
+    return jobs.map(function (job) {
+      var row = document.createElement('div');
+      row.className = 'batch-prog-row';
+      var head = document.createElement('div');
+      head.className = 'd-flex align-items-baseline gap-2';
+      var name = document.createElement('span');
+      name.className = 'progress-label mb-0';
+      name.textContent = job.sample;
+      var status = document.createElement('span');
+      status.className = 'form-help ms-auto text-end';
+      status.textContent = 'Waiting';
+      head.appendChild(name); head.appendChild(status);
+      var track = document.createElement('div');
+      track.className = 'progress mb-2';
+      track.style.height = '16px';
+      var bar = document.createElement('div');
+      bar.className = 'progress-bar';
+      bar.setAttribute('role', 'progressbar');
+      bar.style.width = '0%';
+      track.appendChild(bar);
+      row.appendChild(head); row.appendChild(track);
+      if (list) list.appendChild(row);
+      return {
+        set: function (pct, message) { setBar(bar, pct); status.textContent = message || ''; },
+        end: function (ok, message) {
+          setBar(bar, 100);
+          bar.classList.add(ok ? 'bg-success' : 'bg-danger');
+          status.textContent = message;
+          status.classList.toggle('text-danger', !ok);
+        }
+      };
+    });
   }
 
   if (submitBtn) submitBtn.addEventListener('click', function () { main(); });
@@ -914,7 +1139,8 @@
   // ---- cancel and back buttons ----
   if (cancelBtn) {
     cancelBtn.addEventListener('click', function () {
-      if (client) client.cancel();
+      clients.forEach(function (c) { c.cancel(); });
+      clients = [];
       showPage('input');
     });
   }
@@ -970,9 +1196,8 @@
   }
 
   // ---- alignment summary chart (Figure 1, Plotly) ----
-  // All reads, Aligned and Used per sample, in read pairs. Used can be far smaller than
-  // Aligned, so bars are labelled and a log scale is offered. The numbers come from the
-  // same sources as the summary table, so the two agree.
+  // All reads and Aligned per sample, in read pairs, from the core's log, as in the
+  // summary table. Bars are labelled; a log scale is offered.
 
   var CHART_EL   = 'summary-chart';
   var chartScale = 'linear';
@@ -1006,7 +1231,7 @@
     var muted = cssVar('--text-secondary', '#6b7280');
     var grid  = cssVar('--border',         '#e5e7eb');
 
-    var groups = ['All reads', 'Aligned', 'Used'];
+    var groups = ['All reads', 'Aligned'];
     var series = [
       { name: 'Control',      key: 'ctr', color: '#5b9bd5' },
       { name: 'Cas9-treated', key: 'mut', color: '#ff6b6b' }
@@ -1014,7 +1239,7 @@
 
     var traces = series.map(function (sp) {
       var b = chartData[sp.key] || {};
-      var y = [b.total, b.aligned, b.used].map(function (v) {
+      var y = [b.total, b.aligned].map(function (v) {
         return (typeof v === 'number' && isFinite(v)) ? v : null;
       });
       return {
@@ -1051,8 +1276,8 @@
       showlegend: true
     };
 
-    // A log axis cannot show 0 (a sample with no reads used, say), so zero bars drop out
-    // rather than plotting as -Infinity.
+    // A log axis cannot show 0 (a sample with no aligned reads, say), so zero bars drop
+    // out rather than plotting as -Infinity.
     if (chartScale === 'log') {
       var max = 1;
       traces.forEach(function (t) {
@@ -1074,17 +1299,12 @@
     });
   }
 
-  // metrics: read counts parsed from the core's log. patterns: the parsed
-  // mutation_summary.tsv, whose total_analyzed row is the Used count.
-  function updateSummaryChart(metrics, patterns) {
+  // metrics: read counts parsed from the core's log.
+  function updateSummaryChart(metrics) {
     if (!metrics) return;
-    var analysed = function (which) {
-      var row = patterns && patterns[which] && patterns[which].total_analyzed;
-      return row ? row.n : null;
-    };
     chartData = {
-      ctr: { total: metrics.ctrTotal, aligned: metrics.ctrAligned, used: analysed('control') },
-      mut: { total: metrics.mutTotal, aligned: metrics.mutAligned, used: analysed('treated') }
+      ctr: { total: metrics.ctrTotal, aligned: metrics.ctrAligned },
+      mut: { total: metrics.mutTotal, aligned: metrics.mutAligned }
     };
     renderSummaryChart();
   }
@@ -1144,36 +1364,40 @@
 
     body.innerHTML = '';
     rows.forEach(function (r) {
-      var v    = pat[r.which] || {};
-      var used = v.total_analyzed ? v.total_analyzed.n : 0;
-      var tr   = document.createElement('tr');
-
-      var cells = [
-        { text: r.label, head: true },
-        { text: num(r.total) },
-        { text: countPct(r.total - r.aligned, r.total) },
-        { text: countPct(used, r.total) }
-      ];
-      CLASSES.forEach(function (c) {
-        var x = v[c.key];
-        cells.push({ text: x ? countPct(x.n, used) : '—' });
-      });
-
-      cells.forEach(function (c) {
-        var td = document.createElement('td');
-        td.textContent = c.text;
-        td.className = c.head ? 'text-start' : 'num';
-        tr.appendChild(td);
-      });
-      body.appendChild(tr);
+      body.appendChild(summaryRow(r.label, r.total, r.aligned, pat[r.which] || {}));
     });
 
     if (note) {
       note.textContent =
-        'Table 1. Read pairs per sample. Unmapped and Reads used are shares of Total ' +
-        'reads; the six classes are shares of Reads used. Classes this core does not ' +
-        'call \u2014 large insertions, inversions, complex \u2014 are omitted, not zeroed.';
+        'Table 1. Read pairs per sample. Unmapped is a share of Total reads; the six ' +
+        'classes are shares of Reads used. Classes this core does not call \u2014 large ' +
+        'insertions, inversions, complex \u2014 are omitted, not zeroed.';
     }
+  }
+
+  // One table row: label, total, unmapped (with its share of total), reads used (a count),
+  // then each class as a share of reads used. v: one sample's classes from
+  // parseMutationSummary().
+  function summaryRow(label, total, aligned, v) {
+    var used = v.total_analyzed ? v.total_analyzed.n : 0;
+    var tr   = document.createElement('tr');
+    var cells = [
+      { text: label, head: true },
+      { text: num(total) },
+      { text: countPct(total - aligned, total) },
+      { text: num(used) }
+    ];
+    CLASSES.forEach(function (c) {
+      var x = v[c.key];
+      cells.push({ text: x ? countPct(x.n, used) : '—' });
+    });
+    cells.forEach(function (c) {
+      var td = document.createElement('td');
+      td.textContent = c.text;
+      td.className = c.head ? 'text-start' : 'num';
+      tr.appendChild(td);
+    });
+    return tr;
   }
 
   function num(v) { return (v == null) ? '—' : v.toLocaleString(); }
@@ -1768,20 +1992,165 @@
   })();
 
   // ---- results page ----
-  function finishResults(result, params) {
+  // runs: one per treated sample, { params, result } or { params, error } for one that
+  // failed. The first finished one is shown; with more than one sample, the batch summary
+  // above picks which.
+  function finishBatch(runs) {
+    batchRuns = runs;
     showPage('results');
+    renderBatchSummary(runs);
+    for (var i = 0; i < runs.length; i++) if (runs[i].result) { showRun(i); return; }
+  }
 
+  function showRun(i) {
+    var run = batchRuns[i];
+    if (!run || !run.result) return;
+    lastRun = run.result;
+    renderRun(run.result, run.params);
+    var pick = document.getElementById('batch-pick');
+    if (pick) pick.value = String(i);
+    var body = document.getElementById('batch-body');
+    if (body) {
+      Array.prototype.forEach.call(body.children, function (tr, j) {
+        tr.classList.toggle('table-active', j === i);
+      });
+    }
+  }
+
+  function runPattern(run) {
+    var prefix = run.params.gene + '_' + run.params.sample;
+    return parseMutationSummary((run.result.outputs[prefix + '_mutation_summary.tsv'] || {}).text);
+  }
+
+  function renderBatchSummary(runs) {
+    var box  = document.getElementById('batch-box');
+    var body = document.getElementById('batch-body');
+    var pick = document.getElementById('batch-pick');
+    var dl   = document.getElementById('batch-dl');
+    if (!box || !body) return;
+    box.classList.toggle('d-none', runs.length < 2);
+    body.innerHTML = '';
+    if (pick) pick.innerHTML = '';
+    if (runs.length < 2) return;
+
+    runs.forEach(function (run, i) {
+      if (run.error) {
+        // a failed sample: its name and why, across the row
+        var tr = document.createElement('tr');
+        var name = document.createElement('td');
+        name.className = 'text-start';
+        name.textContent = run.params.sample;
+        var why = document.createElement('td');
+        why.colSpan = 9;
+        why.className = 'text-danger';
+        why.textContent = 'Failed: ' + run.error;
+        tr.appendChild(name); tr.appendChild(why);
+        body.appendChild(tr);
+        return;
+      }
+      var m  = run.result.metrics || {};
+      var row = summaryRow(run.params.sample, m.mutTotal, m.mutAligned, runPattern(run).treated || {});
+      row.addEventListener('click', function () { showRun(i); });
+      body.appendChild(row);
+      if (pick) {
+        var o = document.createElement('option');
+        o.value = String(i);
+        o.textContent = run.params.sample;
+        pick.appendChild(o);
+      }
+    });
+    if (pick) pick.onchange = function () { showRun(parseInt(pick.value, 10)); };
+    if (dl) dl.onclick = function () { downloadBatch(runs); };
+  }
+
+  // batch_summary.tsv: a control and a treated row per finished sample, counts and
+  // percentages of reads used, as in the summary table; a failed sample gets one row
+  // with its error.
+  function batchSummaryTsv(runs) {
+    var head = ['sample', 'status', 'group', 'total_read_pairs', 'unmapped', 'reads_used'];
+    CLASSES.forEach(function (c) { head.push(c.key, c.key + '_percent'); });
+    head.push('error');
+    var lines = [head.join('\t')];
+    runs.forEach(function (run) {
+      if (run.error) {
+        var blank = new Array(head.length - 3).join('\t');
+        lines.push([run.params.sample, 'failed', blank, run.error.replace(/\s+/g, ' ')].join('\t'));
+        return;
+      }
+      var pat = runPattern(run), m = run.result.metrics || {};
+      [['control', m.ctrTotal, m.ctrAligned], ['treated', m.mutTotal, m.mutAligned]].forEach(function (g) {
+        var v = pat[g[0]] || {}, used = v.total_analyzed ? v.total_analyzed.n : 0;
+        var row = [run.params.sample, 'ok', g[0], g[1], g[1] - g[2], used];
+        CLASSES.forEach(function (c) {
+          var x = v[c.key];
+          row.push(x ? x.n : '', x && used ? (x.n / used * 100).toFixed(2) : '');
+        });
+        row.push('');
+        lines.push(row.join('\t'));
+      });
+    });
+    return lines.join('\n') + '\n';
+  }
+
+  // One zip: batch_summary.tsv, and each finished sample's files in a folder named after it.
+  function downloadBatch(runs) {
+    if (typeof fflate === 'undefined' || !fflate.zipSync) {
+      showError('Zip support is unavailable; download each sample\'s files from its results.');
+      return;
+    }
+    var files = { 'batch_summary.tsv': fflate.strToU8(batchSummaryTsv(runs)) };
+    runs.forEach(function (run) {
+      if (!run.result) return;
+      var outs = run.result.outputs || {};
+      Object.keys(outs).forEach(function (n) {
+        if (outs[n].size > 0) files[run.params.sample + '/' + n] = fflate.strToU8(outs[n].text);
+      });
+    });
+    try {
+      var zipped = fflate.zipSync(files, { level: 6 });
+      saveBlob(new Blob([zipped], { type: 'application/zip' }), runs[0].params.gene + '_batch_results.zip');
+    } catch (e) {
+      showError('Could not build the zip: ' + (e.message || e));
+    }
+  }
+
+  // Draws one run's results: the summary table and figures below the batch summary.
+  function renderRun(result, params) {
     var outputs = result.outputs || {};
     var prefix  = params.gene + '_' + params.sample;
     var pat     = parseMutationSummary((outputs[prefix + '_mutation_summary.tsv'] || {}).text);
 
     // in page order, labelled as the page captions them
     fillSummaryTable(pat, result.metrics);                    // Table 1
-    updateSummaryChart(result.metrics, pat);                  // Figure 1
+    updateSummaryChart(result.metrics);                       // Figure 1
     renderPies(pat);                                          // Figure 2
+    renderRescueNote(result.metrics, params);                 // under Figure 2
     updateNucleotide(outputs, prefix, params, refSequence);   // Figures 3–5
     renderDownloads(outputs, prefix);                         // result files
     renderViewer(outputs, prefix, params, result.refLen);     // Figure 6
+  }
+
+  // How many terminal-clip pairs clip rescue re-called per sample, and which
+  // common-with-control test ran. The core prints a rescue line only for a sample that
+  // had terminal-clip pairs.
+  function renderRescueNote(metrics, params) {
+    var el = document.getElementById('rescue-note');
+    if (!el) return;
+    var test = params.commonMode === 'kmeans'
+      ? 'Common-with-control test: k-means.'
+      : 'Common-with-control test: pair-based, within max(20 bp, 2% of the deletion length).';
+    if (!params.clipRescue) {
+      el.textContent = 'Clip rescue off: small indels at a read end count as terminal insertions. ' + test;
+      return;
+    }
+    var one = function (label, r) {
+      return !r ? label + ': no terminal-clip pairs'
+        : label + ': ' + r.rescued.toLocaleString() + ' of ' + r.clipped.toLocaleString() +
+          ' terminal-clip pairs re-called (' + r.del.toLocaleString() + ' deletions, ' +
+          r.ins.toLocaleString() + ' insertions)';
+    };
+    el.textContent = 'Clip rescue — ' + one('control', metrics && metrics.ctrRescue) + '; ' +
+                     one('Cas9-treated', metrics && metrics.mutRescue) + '. ' + test;
   }
 
   // ---- result file downloads ----
@@ -1894,7 +2263,8 @@
     { suffix: '_mut_common.sam',  label: 'Common (removed)',             hint: 'Also in the control, so treated as a PCR artefact' },
     { suffix: '_ctr_only.sam',    label: 'Control-only',                 hint: 'Deletions seen only in the control' },
     { suffix: '_site_mut.sam',    label: 'Treated reads at the cut',     hint: 'Normal reads spanning the cleavage site' },
-    { suffix: '_site_mut_sm.sam', label: 'Treated small indels',         hint: 'Indels / substitutions within ±13 bp of the cut' }
+    { suffix: '_site_mut_sm.sam', label: 'Treated small indels',         hint: 'Indels / substitutions within ±13 bp of the cut' },
+    { suffix: '_site_mut_clip.sam', label: 'Treated terminal insertions (clip)', hint: 'Reads soft-clipped at the cut that clip rescue did not re-call' }
   ];
 
   function renderViewer(outputs, prefix, params, refLen) {
@@ -2066,6 +2436,9 @@
     // so the tests can read what the page computed
     lastRun: function () { return lastRun; },
     outputs: function () { return lastRun ? lastRun.outputs : null; },
+    runs: function () { return batchRuns; },
+    showRun: showRun,
+    addSample: addMutRow,
     parseMutationSummary: parseMutationSummary
   };
 

@@ -16,7 +16,7 @@ const require_ = createRequire(import.meta.url);
 // The core's default options, except full_sam, which is off (that SAM is large).
 export const DEFAULTS = Object.freeze({
   k: 11,
-  distCut: 1000,
+  distCut: 8000,
   fullSam: false,
   minGap: 400,
   anchorMin: 13,
@@ -24,7 +24,9 @@ export const DEFAULTS = Object.freeze({
   insFix: true,
   insMax: 0,
   report: true,
-  largeDelLen: 100
+  largeDelLen: 50,
+  clipRescue: true,
+  commonMode: 'local'
 });
 
 // ---- input staging ----
@@ -48,7 +50,8 @@ export async function sniff(file) {
 }
 
 // Copy a FASTQ file into the in-memory filesystem, gunzipping it if needed; other
-// compression is refused. onBytes(n) gets the bytes written (after gunzip).
+// compression is refused. onBytes(n) gets the bytes read from disk, so progress matches
+// the file sizes for .gz input too.
 // Returns { bytes: bytes written, compressed: whether the input was gzip }.
 async function stageFile(FS, memPath, diskPath, label, onBytes) {
   const kind = await sniff(diskPath);
@@ -67,14 +70,19 @@ async function stageFile(FS, memPath, diskPath, label, onBytes) {
       if (firstByte < 0) firstByte = u8[0];
       FS.write(stream, u8, 0, u8.length, pos);
       pos += u8.length;
-      if (onBytes) onBytes(u8.length);
+    }
+  };
+  const counted = async function* (source) {
+    for await (const chunk of source) {
+      if (onBytes) onBytes(chunk.length);
+      yield chunk;
     }
   };
 
   try {
     const src = createReadStream(diskPath);
-    if (kind === 'gzip') await pipeline(src, createGunzip(), sink);
-    else await pipeline(src, sink);
+    if (kind === 'gzip') await pipeline(src, counted, createGunzip(), sink);
+    else await pipeline(src, counted, sink);
   } catch (e) {
     throw new Error(`${label}: could not read (${e.message || e}). ` +
                     'The file may be corrupt or truncated.');
@@ -104,7 +112,17 @@ export function parseMetrics(stdout) {
   const totals = all(/total_read (\d+)/g);
   const rates = all(/alignment_rate ([\d.]+)/g);
 
+  // Clip rescue prints one line per sample that had terminal-clip pairs; the control's
+  // comes before the end of its alignment.
+  const split = stdout.indexOf('Control sample alignment end');
+  const rescue = (txt) => {
+    const m = txt.match(/clip rescue: (\d+) of (\d+) terminal-clip pairs matched a small indel seen with full anchors \((\d+) deletion, (\d+) insertion\)/);
+    return m ? { rescued: +m[1], clipped: +m[2], del: +m[3], ins: +m[4] } : null;
+  };
+
   return {
+    ctrRescue: split >= 0 ? rescue(stdout.slice(0, split)) : null,
+    mutRescue: split >= 0 ? rescue(stdout.slice(split)) : null,
     ctrAligned: aligned[0] ?? null,
     ctrTotal: totals[0] ?? null,
     ctrAlignRate: rates[0] ?? null,
@@ -125,7 +143,7 @@ export function parseMetrics(stdout) {
 function mapStage(line) {
   if (line.includes('k-mer hashtable finished')) return 'Aligning the control sample…';
   if (line.includes('Control sample alignment end')) return 'Aligning the Cas9-treated sample…';
-  if (line.includes('Cas9 Mutation sample alignment end')) return 'Clustering and false-positive removal…';
+  if (line.includes('Cas9 Mutation sample alignment end')) return 'Removing deletions common with the control…';
   if (line.includes('post process end')) return 'Writing the report…';
   return null;
 }
@@ -201,7 +219,7 @@ export async function runAnalysis(job, onProgress = () => {}) {
      'number', 'number', 'number',
      'string', 'string', 'number', 'string', 'number', 'number',
      'number', 'number', 'number', 'number', 'number', 'number',
-     'number'],
+     'number', 'number', 'number'],
     ['/work/reference.fa', '/work/ctr_1.fastq', '/work/ctr_2.fastq',
      '/work/mut_1.fastq', '/work/mut_2.fastq',
      opt.targetStart - 1, opt.targetEnd - 1, opt.cleavage,
@@ -209,7 +227,8 @@ export async function runAnalysis(job, onProgress = () => {}) {
      opt.distCut, opt.fullSam ? 1 : 0,
      opt.minGap, opt.anchorMin, opt.cutBetween ? 1 : 0,
      opt.insFix ? 1 : 0, opt.insMax, opt.report ? 1 : 0,
-     opt.largeDelLen]);
+     opt.largeDelLen, opt.clipRescue ? 1 : 0,
+     opt.commonMode === 'kmeans' ? 1 : 0]);
 
   if (rc !== 0) {
     const why = stdout.split('\n').filter((l) => /error/i.test(l)).join('\n');

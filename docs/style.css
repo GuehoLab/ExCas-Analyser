@@ -176,6 +176,23 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* ---- Treated-sample rows (batch mode) ---- */
+.mut-row + .mut-row {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.mut-row-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+#batch-body tr { cursor: pointer; }
+#batch-body tr.table-active td { font-weight: 600; }
+
 /* ---- Numeric table cells ---- */
 .num {
   font-family: "IBM Plex Mono", monospace;

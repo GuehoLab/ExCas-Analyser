@@ -10,9 +10,10 @@ It compares a Cas9-treated sample with an untreated control, runs entirely in th
 1. Locate the target sequence and PAM in the reference on either strand, and derive the cleavage site.
 2. Index the reference with k-mers and align the control and Cas9-treated read pairs.
 3. Classify read pairs spanning the cleavage site as WT, small insertion, small deletion, substitution or terminal insertion.
-4. Detect large deletions from split reads and from read pairs with a large gap between the mates.
-5. Cluster deletion breakpoints and remove clusters that also appear in the control (common deletions).
-6. Report read counts, charts and SAM files.
+4. Re-call small indels that show only as a soft clip at a read end (clip rescue).
+5. Detect large deletions from split reads and from read pairs with a large gap between the mates.
+6. Remove large deletions that also appear in the control (common deletions), pair by pair or by k-means clusters.
+7. Report read counts, charts and SAM files.
 
 ---
 
@@ -24,8 +25,10 @@ It compares a Cas9-treated sample with an untreated control, runs entirely in th
 - Detection of large deletions from split reads and paired-end gaps
 - Removal of deletions that also appear in the control
 - Quantification of WT, small insertions, small deletions, substitutions, terminal insertions and large deletions
+- Batch mode: up to 4 Cas9-treated samples against one control, run in parallel; a failed sample is skipped
+- Summary table per sample: total reads, unmapped, reads used, and each mutation class
 - Visualization of:
-  - Read counts per category (linear or log scale)
+  - Read pairs per sample, all and aligned (linear or log scale)
   - Mutation class proportions per sample
   - Base composition around the cleavage site
   - Indel size and position distributions
@@ -58,10 +61,18 @@ ExCas-Analyzer has **2 usage modes**:
 
 ### 1. Web page
 
-1. Upload four FASTQ files: control Read 1 / Read 2 and Cas9-treated Read 1 / Read 2.
+1. Upload the control Read 1 / Read 2 and the Cas9-treated Read 1 / Read 2, and name the treated sample.
 2. Paste the full reference sequence (5' to 3'), or load a FASTA file.
 3. Select the PAM and enter the target sequence (5' to 3', without PAM).
-4. Enter the gene and sample names, then click **Submit**.
+4. Enter the gene name, then click **Submit**.
+
+**Batch mode**
+- Click **Add treated sample** for each further Cas9-treated sample (up to 4), and give each a name
+- Every sample is compared with the same control, reference and target
+- **Run at once (-p)** sets how many samples run at the same time, each in its own worker; **Auto** picks from the file sizes and the computer's memory and processors
+- A sample that fails is marked failed and skipped; the others still finish
+- Sample names must be unique and cannot contain `\ / : * ? " < > |`
+- The results start with a batch summary; click a row, or pick a sample, to show its results
 
 ### 2. MCP server
 
@@ -126,7 +137,7 @@ node local/mcp/server.mjs
 - Sample name : Second part of the output file names
 - K : k-mer length for indexing the reference (default: 11)
 - Cleavage offset : Cut position counted from the target start (default: derived from the PAM and strand)
-- dist_cut (#13) : Furthest a deletion breakpoint may be from the cut, in bp (default: 1000)
+- dist_cut (#13) : Furthest a large deletion's read ends may be from the cut, in bp; caps the deletion size that can be called (default: 8000)
 - full_sam (#14) : Also write the full alignment SAM; MCP only, always off on the page (default: off)
 - min_gap (#16) : Smallest gap between the mates of a non-split pair to count as a large deletion, in bp (default: 400)
 - anchor_min (#17) : Lowest split-read anchor score, length − 4 × mismatches; 0 turns it off (default: 13)
@@ -134,7 +145,10 @@ node local/mcp/server.mjs
 - ins_fix (#19) : Record read-side gaps as insertions (default: on)
 - ins_max (#20) : Longest insertion kept; 0 means no limit (default: 0)
 - report (#21) : Write the HTML report and TSV tables (default: on)
-- large_del_len (#22) : Shortest deletion inside one read that counts as large, in bp (default: 100)
+- large_del_len (#22) : Shortest deletion inside one read that counts as large, in bp; 100 is the paper's definition (default: 50)
+- clip_rescue (#23) : Re-call a small indel within 13 bp of a read end, seen only as a soft clip, as the allele seen with full anchors in at least 3 pairs (default: on)
+- common_mode (#24) : How a large deletion is judged common with the control: pair-based, with breakpoints within max(20 bp, 2% of its length), or k-means clusters (default: pair-based)
+- Run at once (-p) : Web page batch only; how many samples run at the same time, 1–4 (default: Auto)
 
 ### Coordinates
 
@@ -165,6 +179,11 @@ Each file is named `{gene}_{sample}_{suffix}`:
 - site_mut_clip.sam / site_ctr_clip.sam – reads at the cut with a soft-clipped end (terminal insertions)
 - mut.sam / ctr.sam – full alignment (only with full_sam)
 
+**Download batch** saves one zip:
+
+- batch_summary.tsv – per sample: a control and a treated row with counts and percentages per class, or one row marked failed with the reason
+- {sample}/ – each finished sample's files, as above
+
 MCP runs also save:
 
 - run.json – inputs, coordinates, options and results
@@ -188,9 +207,11 @@ MCP runs also save:
 ## Limitations
 
 - Not detected: large insertions, inversions, complex events, precise / partial editing
-- RAM: about the uncompressed FASTQ size plus 1 GB; use a desktop browser
+- RAM: about the uncompressed FASTQ size plus 1 GB per run, so a batch running 4 at once needs about 4 times that; use a desktop browser
+- Each run uses one processor thread; a batch is faster only by running samples side by side
+- Batch mode: the control is analysed again with each sample, because the core compares the two in one run
 - Offline: the analysis works, but charts and styling load from CDNs
-- MCP: tool calls run one at a time, and a run cannot be stopped once started
+- MCP: tool calls run one at a time (one call is one run), and a run cannot be stopped once started
 
 ---
 
@@ -200,6 +221,7 @@ MCP runs also save:
 docs/                 web page served by GitHub Pages
   kmer_align.wasm     the analysis core (WebAssembly)
   testdata/HPRT1/     example data for Load example
+  .nojekyll           GitHub Pages serves the files as they are
 local/                files for running locally
   serve.mjs           local web server for docs/
   mcp/                MCP server

@@ -82,7 +82,9 @@ const ANALYSIS_OPTIONS = {
   ins_fix: { type: 'boolean', default: DEFAULTS.insFix, description: 'Record read-side gaps as insertions. Off loses most insertions of 9 bp or more.' },
   ins_max: { type: 'integer', default: DEFAULTS.insMax, description: 'Longest insertion to keep; 0 means no limit.' },
   report: { type: 'boolean', default: DEFAULTS.report, description: 'Write the HTML report and TSV tables.' },
-  large_del_len: { type: 'integer', default: DEFAULTS.largeDelLen, description: 'Shortest deletion inside one read that counts as large, in bp; shorter ones are small indels.' },
+  large_del_len: { type: 'integer', default: DEFAULTS.largeDelLen, description: 'Shortest deletion inside one read that counts as large, in bp; shorter ones are small indels. 100 is the paper\'s definition.' },
+  clip_rescue: { type: 'boolean', default: DEFAULTS.clipRescue, description: 'Re-call a small indel within 13 bp of a read end, seen only as a soft clip, as the allele seen with full anchors in at least 3 pairs.' },
+  common_mode: { type: 'string', enum: ['local', 'kmeans'], default: DEFAULTS.commonMode, description: 'How a large deletion is judged common with the control: "local" compares read pairs (breakpoints within max(20 bp, 2% of length)); "kmeans" compares cluster centres (the paper\'s method).' },
   full_sam: { type: 'boolean', default: DEFAULTS.fullSam, description: 'Also write the full alignment SAM (about 110 MB per 150k read pairs).' }
 };
 
@@ -245,10 +247,15 @@ register({
     insMax: a.ins_max ?? DEFAULTS.insMax,
     report: a.report ?? DEFAULTS.report,
     largeDelLen: a.large_del_len ?? DEFAULTS.largeDelLen,
+    clipRescue: a.clip_rescue ?? DEFAULTS.clipRescue,
+    commonMode: a.common_mode ?? DEFAULTS.commonMode,
     fullSam: a.full_sam ?? DEFAULTS.fullSam
   };
 
   if (job.k < 7 || job.k > 16) throw new RpcError(INVALID_PARAMS, 'k must be between 7 and 16.');
+  if (job.commonMode !== 'local' && job.commonMode !== 'kmeans') {
+    throw new RpcError(INVALID_PARAMS, 'common_mode must be "local" or "kmeans".');
+  }
 
   log(`run ${runId}: ${gene}/${sample} cut=${loc.cut} k=${job.k}`);
   const res = await runAnalysis(job, ctx.progress);
@@ -294,7 +301,8 @@ register({
     options: {
       k: job.k, dist_cut: job.distCut, min_gap: job.minGap, anchor_min: job.anchorMin,
       cut_between: job.cutBetween, ins_fix: job.insFix, ins_max: job.insMax,
-      report: job.report, large_del_len: job.largeDelLen, full_sam: job.fullSam
+      report: job.report, large_del_len: job.largeDelLen, clip_rescue: job.clipRescue,
+      common_mode: job.commonMode, full_sam: job.fullSam
     },
     output_dir: outDir,
     outputs: res.outputs.map((o) => ({ name: o.name, bytes: o.bytes })),

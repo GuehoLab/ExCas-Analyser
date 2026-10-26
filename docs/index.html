@@ -82,21 +82,52 @@
             </div>
 
             <div class="col-12 col-md-6">
-              <div class="sample-head">Cas9-treated sample</div>
+              <div class="sample-head">Cas9-treated samples</div>
 
-              <label class="form-label" for="file-mut-r1">Read 1 <span class="sub">(fastq)</span></label>
-              <div class="file-box mb-2">
-                <input class="form-control form-control-sm" id="file-mut-r1" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
-                <div class="form-text">.fastq / .fq / .gz</div>
-                <div class="file-name"></div>
+              <!-- One row per treated sample; app.js adds more from the template below -->
+              <div id="mut-rows">
+                <div class="mut-row">
+                  <div class="mut-row-head"><span class="mut-row-title">Sample 1</span></div>
+
+                  <label class="form-label" for="samplename">Sample name</label>
+                  <input type="text" id="samplename" class="form-control form-control-sm mb-2 mut-name" value="HEK293T">
+
+                  <label class="form-label" for="file-mut-r1">Read 1 <span class="sub">(fastq)</span></label>
+                  <div class="file-box mb-2">
+                    <input class="form-control form-control-sm mut-r1" id="file-mut-r1" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+                    <div class="form-text">.fastq / .fq / .gz</div>
+                    <div class="file-name"></div>
+                  </div>
+
+                  <label class="form-label" for="file-mut-r2">Read 2 <span class="sub">(fastq)</span></label>
+                  <div class="file-box">
+                    <input class="form-control form-control-sm mut-r2" id="file-mut-r2" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+                    <div class="form-text">.fastq / .fq / .gz</div>
+                    <div class="file-name"></div>
+                  </div>
+                </div>
               </div>
 
-              <label class="form-label" for="file-mut-r2">Read 2 <span class="sub">(fastq)</span></label>
-              <div class="file-box">
-                <input class="form-control form-control-sm" id="file-mut-r2" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
-                <div class="form-text">.fastq / .fq / .gz</div>
-                <div class="file-name"></div>
+              <button type="button" class="btn btn-primary btn-sm w-100 mt-3" id="add-sample">
+                <i class="bi bi-plus-lg"></i> Add treated sample (up to 4)
+              </button>
+              <div class="form-help mt-1">Batch mode: every treated sample is compared with the
+                same control, reference and target. A sample that fails is skipped; the others
+                still finish.</div>
+
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <label class="form-label mb-0" for="parallel">Run at once <span class="sub">(-p)</span></label>
+                <select id="parallel" class="form-select form-select-sm" style="width:auto">
+                  <option value="auto" selected>Auto</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
               </div>
+              <div class="form-help mt-1">How many samples run at the same time, each in its own
+                worker. Each run needs about its uncompressed FASTQ size plus 1 GB of memory; Auto
+                picks from the file sizes and this computer's memory and processors.</div>
             </div>
 
             <div class="col-12">
@@ -146,12 +177,8 @@
             <div class="col-12 col-md-6">
               <label class="form-label" for="genename">Gene name</label>
               <input type="text" id="genename" class="form-control form-control-sm" value="HPRT1">
-              <div class="form-help">Used as the SAM reference name and in output file names.</div>
-            </div>
-
-            <div class="col-12 col-md-6">
-              <label class="form-label" for="samplename">Sample name</label>
-              <input type="text" id="samplename" class="form-control form-control-sm" value="HEK293T">
+              <div class="form-help">Used as the SAM reference name and, with each sample name, in
+                output file names.</div>
             </div>
           </div>
 
@@ -183,22 +210,36 @@
 
                     <div class="col-12"><hr class="my-1"></div>
                     <div class="col-12 form-help mb-0">
-                      These are CLI options #13 and #16&ndash;#22, shown at their CLI defaults
+                      These are CLI options #13 and #16&ndash;#24, shown at their CLI defaults
                       (#14 <code>full_sam</code> is always off here, #15 always SAM). Leave them
                       alone unless you have a reason to change them.
                     </div>
 
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="largeDelLen">Large deletion minimum length <span class="sub">(bp)</span></label>
-                      <input type="number" id="largeDelLen" class="form-control form-control-sm" value="100" min="1">
+                      <input type="number" id="largeDelLen" class="form-control form-control-sm" value="50" min="1">
                       <div class="form-help">#22 <code>large_del_len</code>. A deletion this long or longer inside
-                        one read is a large deletion; shorter ones are small indels. Default 100 (the paper's
-                        definition).</div>
+                        one read is a large deletion; shorter ones are small indels. Default 50; use 100 for the
+                        paper's large-deletion definition.</div>
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="distCut">Cleavage-site tolerance <span class="sub">(bp)</span></label>
-                      <input type="number" id="distCut" class="form-control form-control-sm" value="1000" min="1">
-                      <div class="form-help">#13 <code>dist_cut</code>. How far a deletion breakpoint may be from the cut.</div>
+                      <input type="number" id="distCut" class="form-control form-control-sm" value="8000" min="1">
+                      <div class="form-help">#13 <code>dist_cut</code>. How far a large deletion's read ends may be from
+                        the cut, which caps the deletion size that can be called. Default 8000; at 1000 most
+                        deletions over 3 kb are lost. Small indels are not affected.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="commonMode">Common-with-control test</label>
+                      <select id="commonMode" class="form-select form-select-sm">
+                        <option value="local" selected>Pair-based (default)</option>
+                        <option value="kmeans">k-means (the paper's method)</option>
+                      </select>
+                      <div class="form-help">#24 <code>common_mode</code>. Pair-based: a treated deletion is common
+                        (an artefact) when at least 4 control pairs have both breakpoints within max(20 bp, 2% of
+                        its length) and their frequency is at least half the treated one; the result does not
+                        depend on read order. k-means compares cluster centres and can vary between runs for
+                        deletions over 2 kb.</div>
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="minGap">Minimum mate gap <span class="sub">(bp)</span></label>
@@ -227,10 +268,17 @@
                         <label class="form-check-label" for="insFix">Insertion alignment fix <span class="sub">(#19 ins_fix)</span></label>
                       </div>
                       <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="clipRescue" checked>
+                        <label class="form-check-label" for="clipRescue">Clip rescue <span class="sub">(#23 clip_rescue)</span></label>
+                      </div>
+                      <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="report" checked>
                         <label class="form-check-label" for="report">Generate the HTML report <span class="sub">(#21)</span></label>
                       </div>
-                      <div class="form-help">With <code>ins_fix</code> off, most insertions of 9 bp or more are lost.</div>
+                      <div class="form-help">With <code>ins_fix</code> off, most insertions of 9 bp or more are lost.
+                        Clip rescue re-calls a small indel within 13 bp of a read end, seen only as a soft clip,
+                        as the same allele seen with full anchors in at least 3 pairs of the sample; with it off,
+                        about 10% of 1&ndash;10 bp deletions count as terminal insertions.</div>
                     </div>
                   </div>
                 </div>
@@ -257,6 +305,34 @@
           </div>
 
         </form>
+
+        <!-- An added treated-sample row; app.js fills in the ids and the number -->
+        <template id="mut-row-template">
+          <div class="mut-row">
+            <div class="mut-row-head">
+              <span class="mut-row-title">Sample</span>
+              <button type="button" class="btn btn-link btn-sm text-danger p-0 ms-auto mut-remove"
+                      title="Remove this sample"><i class="bi bi-x-lg"></i> Remove</button>
+            </div>
+
+            <label class="form-label">Sample name</label>
+            <input type="text" class="form-control form-control-sm mb-2 mut-name">
+
+            <label class="form-label">Read 1 <span class="sub">(fastq)</span></label>
+            <div class="file-box mb-2">
+              <input class="form-control form-control-sm mut-r1" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+              <div class="form-text">.fastq / .fq / .gz</div>
+              <div class="file-name"></div>
+            </div>
+
+            <label class="form-label">Read 2 <span class="sub">(fastq)</span></label>
+            <div class="file-box">
+              <input class="form-control form-control-sm mut-r2" type="file" accept=".fastq,.fq,.gz,.fastq.gz,.fq.gz">
+              <div class="form-text">.fastq / .fq / .gz</div>
+              <div class="file-name"></div>
+            </div>
+          </div>
+        </template>
       </div><!-- .app-card -->
     </div>
   </section>
@@ -300,17 +376,26 @@
           </table>
         </div>
 
-        <div class="progress-label">Control sample</div>
-        <div class="progress mb-2" style="height:22px">
-          <div class="progress-bar progress-bar-striped progress-bar-animated" id="ctr-bar" role="progressbar" style="width:0%">0%</div>
+        <!-- Batch: one row per sample, filled in by app.js -->
+        <div id="batch-progress" class="d-none mb-3">
+          <div class="form-help mb-2" id="batch-progress-note"></div>
+          <div id="batch-progress-rows"></div>
         </div>
 
-        <div class="progress-label">Cas9-treated sample</div>
-        <div class="progress mb-3" style="height:22px">
-          <div class="progress-bar progress-bar-striped progress-bar-animated" id="mut-bar" role="progressbar" style="width:0%">0%</div>
-        </div>
+        <!-- One sample: control and treated bars -->
+        <div id="single-progress">
+          <div class="progress-label">Control sample</div>
+          <div class="progress mb-2" style="height:22px">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="ctr-bar" role="progressbar" style="width:0%">0%</div>
+          </div>
 
-        <div class="form-help" id="stage">Preparing…</div>
+          <div class="progress-label">Cas9-treated sample</div>
+          <div class="progress mb-3" style="height:22px">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="mut-bar" role="progressbar" style="width:0%">0%</div>
+          </div>
+
+          <div class="form-help" id="stage">Preparing…</div>
+        </div>
 
         <div class="mt-3">
           <button class="btn btn-outline-secondary btn-sm" id="cancelBtn" type="button">
@@ -327,6 +412,34 @@
   <section class="py-3 py-md-4">
     <div class="container container-narrow">
 
+
+      <!-- Batch summary: one row per treated sample, shown when more than one ran -->
+      <div class="app-card p-3 p-md-4 mb-3 d-none" id="batch-box">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+          <div class="section-title mb-0">Batch Summary</div>
+          <button type="button" class="btn btn-primary btn-sm ms-auto" id="batch-dl">
+            <i class="bi bi-file-earmark-zip"></i> Download batch
+          </button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered table-hover align-middle mb-1" id="batch-table">
+            <thead class="table-light">
+              <tr>
+                <th>Sample</th><th>Total reads</th><th>Unmapped</th><th>Reads used in analysis</th>
+                <th>WT</th><th>Ins</th><th>Del</th><th>Sub</th><th>LargeDel</th><th>TermIns</th>
+              </tr>
+            </thead>
+            <tbody id="batch-body"></tbody>
+          </table>
+        </div>
+        <div class="form-help mb-3">Cas9-treated rows, one per sample. Each sample was analysed
+          against the same control; its control row is in the full results below. Click a row,
+          or pick a sample, to show its results. A sample that failed shows why.</div>
+        <div class="d-flex align-items-center gap-2">
+          <label class="form-label mb-0" for="batch-pick">Showing results for</label>
+          <select id="batch-pick" class="form-select form-select-sm" style="width:auto"></select>
+        </div>
+      </div>
 
       <div class="app-card p-3 p-md-4">
         <!-- Summary table -->
@@ -366,8 +479,7 @@
           The same figures are in the table above.
         </div>
         <div class="form-help mb-4">
-          Figure 1. Read pairs at each stage. <em>Used</em> (the pairs that can be
-          classified) is a small part of Aligned; the log scale shows both.
+          Figure 1. Read pairs per sample: all reads, and those aligned to the reference.
         </div>
 
         <!-- Figure 2: mutation pattern pie charts -->
@@ -376,10 +488,11 @@
           <div class="col-12 col-md-6"><div id="pie-ctr" style="min-height:300px"></div></div>
           <div class="col-12 col-md-6"><div id="pie-mut" style="min-height:300px"></div></div>
         </div>
-        <div class="form-help mb-4" id="pie-note">
+        <div class="form-help mb-2" id="pie-note">
           Figure 2. Share of each mutation class among <em>Reads used in analysis</em>,
           per sample.
         </div>
+        <div class="form-help mb-4" id="rescue-note"></div>
 
         <!-- Figure 3: nucleotide composition -->
         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
@@ -447,7 +560,7 @@
 
         <!-- Figure 6: alignment viewer -->
         <div class="section-title mb-1">Alignment Viewer</div>
-        <p class="form-help">Figure 6. Reads coloured by the cluster the tool assigned,
+        <p class="form-help">Figure 6. Reads coloured by the breakpoint group the tool assigned,
           deletions drawn as a thin connecting line, mates grouped into one event.
           Scroll to zoom, drag to pan.</p>
 

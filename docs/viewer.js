@@ -1,5 +1,6 @@
-// IGV-style canvas viewer for the core's SAM output: reads coloured by cluster (YC
-// tag), strand or a deletion of 50 bp or more, mates optionally joined in one row,
+// IGV-style canvas viewer for the core's SAM output: reads coloured by breakpoint group
+// (YC tag: a fixed grouping with the pair-based common test, k-means clusters with
+// k-means), strand or a deletion of 50 bp or more, mates optionally joined in one row,
 // and the cut site and protospacer marked.
 
 const PALETTE_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100',

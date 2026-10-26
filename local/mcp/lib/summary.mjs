@@ -69,6 +69,9 @@ export function headline(metrics) {
     control_small_indel_percent: metrics.ctrSmallIndelPct,
     treated_large_deletion_percent: metrics.mutLargeDelPct,
     treated_small_indel_percent: metrics.mutSmallIndelPct,
+    // terminal-clip pairs re-called by clip rescue; null when a sample had none
+    control_clip_rescue: metrics.ctrRescue,
+    treated_clip_rescue: metrics.mutRescue,
     timing_seconds: {
       control_alignment: metrics.ctrAlignSec,
       treated_alignment: metrics.mutAlignSec,
