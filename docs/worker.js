@@ -1,7 +1,8 @@
 // Web worker: copies the input files into the core's in-memory filesystem, runs the
 // WebAssembly analysis off the main thread and posts back the files it writes to /out.
 // In:  { type:'run', params, files:{ref,ctr1,ctr2,mut1,mut2}, labels }
-// Out: { type:'progress'|'done'|'error', … }
+// Out: { type:'progress'|'done'|'error', … }; progress carries stage, frac (0..1 or
+//      null), message and files { done, total, current, next } for the result files.
 importScripts('kmer_align.js', 'vendor/fflate.min.js');
 
 function post(type, payload) { self.postMessage(Object.assign({ type: type }, payload)); }
@@ -61,6 +62,7 @@ self.onmessage = async (ev) => {
 
   try {
     let stdout = '';
+    let watch = null;           // set once the core runs; see watchCore()
     const t0 = performance.now();
 
     post('progress', { stage: 'load', message: 'Loading analysis module…' });
@@ -68,8 +70,8 @@ self.onmessage = async (ev) => {
     const Module = await CrisprLargeDel({
       print: (line) => {
         stdout += line + '\n';
-        const m = mapStage(line);
-        if (m) post('progress', { stage: m.stage, message: m.message });
+        const stage = mapStage(line);
+        if (stage && watch) watch.setStage(stage);
       },
       printErr: (line) => { stdout += line + '\n'; }
     });
@@ -99,25 +101,38 @@ self.onmessage = async (ev) => {
       files[key] = null;
     }
 
-    post('progress', { stage: 'run', message: 'Building the k-mer hash table…' });
+    // The core reports only when a stage ends; watchCore() fills in between from its
+    // file access, posting at most every 120 ms.
+    const prefix = params.gene + '_' + params.sample;
+    watch = watchCore(FS, expectedOutputs(prefix, params.report), (p) => {
+      post('progress', { stage: p.stage, frac: p.frac, files: p.files,
+                         message: progressMessage(p.stage, p.frac, p.files) });
+    });
+    watch.setStage('hash');
+
     // params are 1-based; the core takes a 0-based target start/end. The cleavage
     // offset is counted from the target start, so it needs no change.
-    const rc = Module.ccall(
-      'run_analysis', 'number',
-      ['string', 'string', 'string', 'string', 'string',
-       'number', 'number', 'number',
-       'string', 'string', 'number', 'string', 'number', 'number',
-       'number', 'number', 'number', 'number', 'number', 'number',
-       'number', 'number', 'number'],
-      ['/work/' + names.ref, '/work/' + names.ctr1, '/work/' + names.ctr2,
-       '/work/' + names.mut1, '/work/' + names.mut2,
-       params.targetStart - 1, params.targetEnd - 1, params.cleavage,
-       params.gene, params.sample, params.k, '/out',
-       params.distCut, params.fullSam ? 1 : 0,
-       params.minGap, params.anchorMin, params.cutBetween ? 1 : 0,
-       params.insFix ? 1 : 0, params.insMax, params.report ? 1 : 0,
-       params.largeDelLen, params.clipRescue ? 1 : 0,
-       params.commonMode === 'kmeans' ? 1 : 0]);
+    let rc;
+    try {
+      rc = Module.ccall(
+        'run_analysis', 'number',
+        ['string', 'string', 'string', 'string', 'string',
+         'number', 'number', 'number',
+         'string', 'string', 'number', 'string', 'number', 'number',
+         'number', 'number', 'number', 'number', 'number', 'number',
+         'number', 'number', 'number'],
+        ['/work/' + names.ref, '/work/' + names.ctr1, '/work/' + names.ctr2,
+         '/work/' + names.mut1, '/work/' + names.mut2,
+         params.targetStart - 1, params.targetEnd - 1, params.cleavage,
+         params.gene, params.sample, params.k, '/out',
+         params.distCut, params.fullSam ? 1 : 0,
+         params.minGap, params.anchorMin, params.cutBetween ? 1 : 0,
+         params.insFix ? 1 : 0, params.insMax, params.report ? 1 : 0,
+         params.largeDelLen, params.clipRescue ? 1 : 0,
+         params.commonMode === 'kmeans' ? 1 : 0]);
+    } finally {
+      watch.stop();
+    }
 
     if (rc !== 0) {
       // The core prints the reason; show its error lines, or the end of its output.
@@ -125,14 +140,15 @@ self.onmessage = async (ev) => {
       throw new Error('The analysis did not start (argument error).\n' + (why || stdout.slice(-2000)));
     }
 
-    post('progress', { stage: 'collect', message: 'Collecting results…' });
     const out = {};
     const dec = new TextDecoder();
-    for (const name of FS.readdir('/out')) {
-      if (name === '.' || name === '..') continue;
+    const listed = FS.readdir('/out').filter((n) => n !== '.' && n !== '..');
+    listed.forEach((name, i) => {
+      post('progress', { stage: 'collect', frac: i / listed.length,
+                         message: 'Collecting results (' + (i + 1) + '/' + listed.length + '): ' + name });
       const data = FS.readFile('/out/' + name);
       out[name] = { size: data.length, text: dec.decode(data) };
-    }
+    });
 
     const refLenM = stdout.match(/\[ref\] .*?: (\d+) bp/);
     post('done', {
@@ -148,12 +164,140 @@ self.onmessage = async (ev) => {
   }
 };
 
+// The stage that starts after a line of the core's log, or null.
 function mapStage(line) {
-  if (line.includes('k-mer hashtable finished')) return { stage: 'run',    message: 'Aligning the control sample…' };
-  if (line.includes('Control sample alignment end')) return { stage: 'run2', message: 'Aligning the Cas9-treated sample…' };
-  if (line.includes('Cas9 Mutation sample alignment end')) return { stage: 'post', message: 'Removing deletions common with the control…' };
-  if (line.includes('post process end')) return { stage: 'report', message: 'Writing the report…' };
+  if (line.includes('k-mer hashtable finished')) return 'run';
+  if (line.includes('Control sample alignment end')) return 'run2';
+  if (line.includes('Cas9 Mutation sample alignment end')) return 'post';
+  if (line.includes('post process end')) return 'report';
   return null;
+}
+
+// ---- progress inside the core ----
+// run_analysis() is one blocking call, and the core prints only when a stage ends, so
+// on its own the bar would sit still through each alignment and the report. Everything
+// the core reads and writes goes through the in-memory filesystem, though: the read
+// position in the stage's FASTQ files shows how far an alignment has got, and the
+// files opened in /out show which result is being written.
+
+// The FASTQ files each stage reads: the control's, then the treated sample's. The
+// report reads all four again, one after another, to check insertions against the
+// raw reads.
+const STAGE_READS = {
+  run:    ['ctr_1.fastq', 'ctr_2.fastq'],
+  run2:   ['mut_1.fastq', 'mut_2.fastq'],
+  report: ['ctr_1.fastq', 'ctr_2.fastq', 'mut_1.fastq', 'mut_2.fastq']
+};
+
+const STAGE_TEXT = {
+  hash:   'Building the k-mer hash table…',
+  run:    'Aligning the control sample…',
+  run2:   'Aligning the Cas9-treated sample…',
+  post:   'Removing deletions common with the control…',
+  report: 'Writing results'
+};
+
+// The files the core writes to /out, in the order it writes them. full_sam, which the
+// page always turns off, would add more; a file not listed here is counted when it opens.
+function expectedOutputs(prefix, report) {
+  const names = ['_site_ctr.sam', '_site_ctr_sm.sam', '_site_ctr_clip.sam',
+                 '_site_mut.sam', '_site_mut_sm.sam', '_site_mut_clip.sam',
+                 '_ctr_only.sam', '_ctr_common.sam', '_mut_only.sam', '_mut_common.sam',
+                 '_mutation_summary.tsv'];
+  if (report) names.push('_report.tsv', '_report.html');
+  return names.map((s) => prefix + s);
+}
+
+// Wraps the filesystem's read, open and close to follow the core. onChange gets
+// { stage, frac, files }: frac is the share of the stage's FASTQ bytes read (null for a
+// stage that reads none); files is { done, total, current, next }, current being the
+// result file open now or null, next the first expected one not yet written. Reads are reported at most every 120 ms, file opens and closes
+// at once. Returns { setStage(stage), stop() }; stop() puts the filesystem back.
+function watchCore(FS, expected, onChange) {
+  const orig = { read: FS.read, open: FS.open, close: FS.close };
+  const sizes = {};             // input path -> bytes
+  Object.keys(STAGE_READS).forEach((s) => STAGE_READS[s].forEach((f) => {
+    sizes['/work/' + f] = FS.stat('/work/' + f).size;
+  }));
+  let pos = {};                 // input path -> furthest position read in this stage
+  const files = { done: 0, total: expected.length, current: null };
+  const written = new Set();
+  let stage = 'hash', last = 0;
+
+  const frac = () => {
+    const list = STAGE_READS[stage];
+    if (!list) return null;
+    let got = 0, all = 0;
+    list.forEach((f) => { got += pos['/work/' + f] || 0; all += sizes['/work/' + f]; });
+    return all ? Math.min(1, got / all) : null;
+  };
+  const emit = (now) => {
+    last = now;
+    const next = expected.filter((n) => !written.has(n))[0] || null;
+    onChange({ stage: stage, frac: frac(),
+               files: { done: files.done, total: files.total, current: files.current, next: next } });
+  };
+
+  // A result file: opened for writing in /out. The core's .ka_tmp. scratch files are
+  // not results, and the empty summary it creates before the hash table is not counted.
+  const resultName = (stream) => {
+    if (stage === 'hash' || (stream.flags & 3) === 0) return null;
+    const m = /^\/out\/([^/]+)$/.exec(stream.path || '');
+    return m && !/\.ka_tmp\./.test(m[1]) ? m[1] : null;
+  };
+
+  FS.read = function (stream) {
+    const n = orig.read.apply(this, arguments);
+    const p = stream.path;
+    if (sizes[p] !== undefined && stream.position > (pos[p] || 0)) {
+      pos[p] = stream.position;
+      const now = performance.now();
+      if (now - last > 120) emit(now);
+    }
+    return n;
+  };
+  FS.open = function () {
+    const stream = orig.open.apply(this, arguments);
+    const name = resultName(stream);
+    if (name) {
+      if (expected.indexOf(name) < 0) { expected.push(name); files.total++; }
+      files.current = name;
+      emit(performance.now());
+    }
+    return stream;
+  };
+  FS.close = function (stream) {
+    const name = resultName(stream);
+    const r = orig.close.apply(this, arguments);
+    if (name) {
+      written.add(name);
+      files.done = written.size;
+      if (files.current === name) files.current = null;
+      emit(performance.now());
+    }
+    return r;
+  };
+
+  return {
+    setStage: (s) => { stage = s; pos = {}; emit(performance.now()); },
+    stop: () => { FS.read = orig.read; FS.open = orig.open; FS.close = orig.close; }
+  };
+}
+
+// The progress line. A result file being written is named with its count; otherwise
+// the stage, with how far it has read. In the report stage, before its files are
+// written, the core checks insertions against the raw reads, which takes a while; that
+// is shown against the report file it is for.
+function progressMessage(stage, frac, files) {
+  const pct = frac == null ? '' : ' ' + Math.round(frac * 100) + '%';
+  const count = 'Writing results (' + Math.min(files.done + 1, files.total) + '/' + files.total + '): ';
+  if (files.current) return count + files.current;
+  if (stage === 'report') {
+    if (files.done >= files.total || !files.next) return 'Writing results (' + files.done + '/' + files.total + ')';
+    return count + files.next +
+           (frac != null && frac < 1 ? ' \u2014 checking insertions against the raw reads…' + pct : '');
+  }
+  return (STAGE_TEXT[stage] || '') + ((stage === 'run' || stage === 'run2') ? pct : '');
 }
 
 // The core prints its summary as text; read the numbers back out. total_align,

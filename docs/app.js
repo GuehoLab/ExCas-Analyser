@@ -36,6 +36,7 @@
   // progress page
   var ctrBar     = document.getElementById('ctr-bar');
   var mutBar     = document.getElementById('mut-bar');
+  var resBar     = document.getElementById('res-bar');
   var stageEl    = document.getElementById('stage');
   var cancelBtn  = document.getElementById('cancelBtn');
 
@@ -58,6 +59,7 @@
   var clients       = [];     // the AnalysisClients still running
   var lastRun       = null;   // the worker's 'done' payload for the results on show
   var batchRuns     = [];     // per treated sample of the last batch: { params, result } or { params, error }
+  var shownRun      = 0;      // index in batchRuns of the run on show
   var refSequence   = '';
   var _exampleFiles = null;  // the loaded example's files; null once the user picks a file
 
@@ -75,11 +77,12 @@
     return el ? !!el.checked : fallback;
   }
 
-  function setBar(bar, pct) {
+  // label: the text in the bar; the percent when left out.
+  function setBar(bar, pct, label) {
     if (!bar) return;
     var p = Math.max(0, Math.min(100, Math.round(pct)));
     bar.style.width = p + '%';
-    bar.textContent = p + '%';
+    bar.textContent = label != null ? label : p + '%';
     if (p >= 100) bar.classList.remove('progress-bar-animated');
     else bar.classList.add('progress-bar-animated');
   }
@@ -1018,7 +1021,7 @@
       rows[i].set(0, 'Preparing…');
 
       var c = new AnalysisClient({
-        onProgress: function (pct, message) { rows[i].set(pct, message); },
+        onProgress: function (pct, message, detail) { rows[i].set(pct, message, detail); },
         onDone: function (result) {
           console.log('[app.js] %s complete in %ss', job.sample, (result.elapsedMs / 1000).toFixed(1));
           rows[i].end(true, 'Done');
@@ -1061,8 +1064,10 @@
   }
 
   // The progress page's bars. One sample: the control and treated bars, since the core
-  // aligns the control first. A batch: one bar per sample. Returns a controller per job,
-  // with set(pct, message) and end(ok, message).
+  // aligns the control first, and the result files. A batch: one bar per sample, its
+  // status line naming the result file being written. Returns a controller per job, with
+  // set(pct, message, detail) and end(ok, message); detail is the worker's progress
+  // message (see analysis-client.js).
   function setupProgress(jobs, parallel) {
     var single = document.getElementById('single-progress');
     var batch  = document.getElementById('batch-progress');
@@ -1073,17 +1078,33 @@
     if (batch)  batch.classList.toggle('d-none', !many);
 
     if (!many) {
-      setBar(ctrBar, 0); setBar(mutBar, 0);
+      // Control bar: up to the end of the control's alignment, input copying included.
+      // Treated bar: the treated sample's alignment. Result bar: files done of total; in
+      // the report stage, before its files open, it also moves with the raw-read check.
+      var R = AnalysisClient.STAGE_RANGE;
+      var span = function (pct, r0, r1) { return (pct - r0) / (r1 - r0) * 100; };
+      var files = null;
+      setBar(ctrBar, 0); setBar(mutBar, 0); setBar(resBar, 0, '0/0');
       if (stageEl) stageEl.textContent = 'Preparing…';
       return [{
-        set: function (pct, message) {
+        set: function (pct, message, detail) {
           var p = Math.max(0, Math.min(100, pct));
-          setBar(ctrBar, Math.min(100, p * 2));
-          setBar(mutBar, Math.max(0, (p - 50) * 2));
+          setBar(ctrBar, Math.max(0, Math.min(100, span(p, 0, R.run[1]))));
+          setBar(mutBar, Math.max(0, Math.min(100, span(p, R.run2[0], R.run2[1]))));
+          if (detail && detail.files) {
+            files = detail.files;
+            var part = (detail.stage === 'report' && !files.current && detail.frac != null &&
+                        files.done < files.total) ? detail.frac : 0;
+            setBar(resBar, files.total ? (files.done + part) / files.total * 100 : 0,
+                   files.done + '/' + files.total);
+          }
           if (stageEl) stageEl.textContent = message || '';
         },
         end: function (ok, message) {
-          if (ok) { setBar(ctrBar, 100); setBar(mutBar, 100); }
+          if (ok) {
+            setBar(ctrBar, 100); setBar(mutBar, 100);
+            setBar(resBar, 100, files ? files.done + '/' + files.total : '100%');
+          }
           if (stageEl) stageEl.textContent = ok ? 'Done!' : message;
         }
       }];
@@ -1351,6 +1372,91 @@
     return v;
   }
 
+  // ---- terminal insertions (TermIns) ----
+  // A terminal insertion runs off the end of the read and is soft-clipped, so where it
+  // sits and how long it is stay uncertain. "Without TermIns" leaves those pairs out of
+  // everything on the page: they leave Reads used, so the other classes become shares of
+  // the pairs that remain, and their SAM files drop out of the figures and the viewer.
+  // The core's files are not changed; the downloads gain a summary without them.
+  var includeTermIns = true;
+
+  // pat from parseMutationSummary(), or a copy without TermIns. In the copy each sample's
+  // terminal_insertion_clipped is { n: 0, excluded: pairs left out }, total_analyzed is
+  // the pairs that remain and the class percents are recomputed; keys keep their order.
+  function applyTermIns(pat) {
+    if (includeTermIns) return pat;
+    var out = {};
+    Object.keys(pat).forEach(function (which) {
+      var v = pat[which] || {}, w = {};
+      var t    = v.terminal_insertion_clipped ? v.terminal_insertion_clipped.n : 0;
+      var used = (v.total_analyzed ? v.total_analyzed.n : 0) - t;
+      Object.keys(v).forEach(function (k) { w[k] = v[k]; });
+      if (v.total_analyzed) {
+        CLASSES.forEach(function (c) {
+          if (!v[c.key]) return;
+          w[c.key] = { n: v[c.key].n, pct: used ? (v[c.key].n / used * 100).toFixed(2) : 'NA' };
+        });
+        w.total_analyzed = { n: used, pct: used ? '100.00' : 'NA' };
+      }
+      w.terminal_insertion_clipped = { n: 0, pct: 'NA', excluded: t };
+      out[which] = w;
+    });
+    return out;
+  }
+
+  // The pairs left out of each sample, for the notes: 'N control and M Cas9-treated'.
+  function excludedText(pat) {
+    var n = function (which) {
+      var x = pat[which] && pat[which].terminal_insertion_clipped;
+      return (x && x.excluded ? x.excluded : 0).toLocaleString();
+    };
+    return n('control') + ' control and ' + n('treated') + ' Cas9-treated';
+  }
+
+  // The core's mutation_summary.tsv layout, written from an adjusted pattern. The TermIns
+  // row becomes terminal_insertion_clipped_excluded, a count outside the percentages.
+  function mutationSummaryTsv(pat) {
+    var lines = ['sample\tpattern\tread_pairs\tpercent'];
+    ['control', 'treated'].forEach(function (which) {
+      var v = pat[which] || {};
+      Object.keys(v).forEach(function (k) {
+        var x = v[k];
+        if (x.excluded != null) lines.push([which, k + '_excluded', x.excluded, 'NA'].join('\t'));
+        else lines.push([which, k, x.n, x.pct].join('\t'));
+      });
+    });
+    return lines.join('\n') + '\n';
+  }
+
+  // The core's output files, plus <prefix>_mutation_summary_no_termins.tsv when TermIns are
+  // left out. pat: the adjusted pattern.
+  function downloadFiles(outputs, prefix, pat) {
+    if (includeTermIns) return outputs;
+    var files = {};
+    Object.keys(outputs).forEach(function (n) { files[n] = outputs[n]; });
+    var text = mutationSummaryTsv(pat);
+    files[prefix + '_mutation_summary_no_termins.tsv'] = { size: text.length, text: text };
+    return files;
+  }
+
+  (function wireTermInsToggle() {
+    var on  = document.getElementById('termins-on');
+    var off = document.getElementById('termins-off');
+    if (!on || !off) return;
+    function set(include) {
+      if (include === includeTermIns) return;
+      includeTermIns = include;
+      on.classList.toggle('active', include);
+      off.classList.toggle('active', !include);
+      // redraw what is on show: the batch summary, then the selected run
+      if (!batchRuns.length) return;
+      renderBatchSummary(batchRuns);
+      showRun(shownRun);
+    }
+    on.addEventListener('click', function () { set(true); });
+    off.addEventListener('click', function () { set(false); });
+  })();
+
   // ---- Table 1: summary table ----
   function fillSummaryTable(pat, metrics) {
     var body = document.getElementById('summary-body');
@@ -1371,7 +1477,9 @@
       note.textContent =
         'Table 1. Read pairs per sample. Unmapped is a share of Total reads; the six ' +
         'classes are shares of Reads used. Classes this core does not call \u2014 large ' +
-        'insertions, inversions, complex \u2014 are omitted, not zeroed.';
+        'insertions, inversions, complex \u2014 are omitted, not zeroed.' +
+        (includeTermIns ? '' : ' Without TermIns: ' + excludedText(pat) + ' pairs with a ' +
+         'terminal insertion are left out of Reads used and of every figure below.');
     }
   }
 
@@ -1389,7 +1497,8 @@
     ];
     CLASSES.forEach(function (c) {
       var x = v[c.key];
-      cells.push({ text: x ? countPct(x.n, used) : '—' });
+      cells.push({ text: !x ? '—' : x.excluded != null ? 'excluded: ' + x.excluded.toLocaleString()
+                                                     : countPct(x.n, used) });
     });
     cells.forEach(function (c) {
       var td = document.createElement('td');
@@ -1468,25 +1577,29 @@
 
   // The SAM files behind each sample's per-base figures: the reads the summary table
   // counts as used, plus the *_common deletions the table leaves out. 'large' marks the
-  // split-read files, whose deletions are counted separately.
+  // split-read files, whose deletions are counted separately; termIns the terminal
+  // insertions, dropped without TermIns.
   var NT_SOURCES = {
     control: [
       { suffix: '_site_ctr.sam',      kind: 'local' },
       { suffix: '_site_ctr_sm.sam',   kind: 'local' },
-      { suffix: '_site_ctr_clip.sam', kind: 'local' },
+      { suffix: '_site_ctr_clip.sam', kind: 'local', termIns: true },
       { suffix: '_ctr_only.sam',      kind: 'large' },
       { suffix: '_ctr_common.sam',    kind: 'large' }
     ],
     treated: [
       { suffix: '_site_mut.sam',      kind: 'local' },
       { suffix: '_site_mut_sm.sam',   kind: 'local' },
-      { suffix: '_site_mut_clip.sam', kind: 'local' },
+      { suffix: '_site_mut_clip.sam', kind: 'local', termIns: true },
       { suffix: '_mut_only.sam',      kind: 'large' },
       { suffix: '_mut_common.sam',    kind: 'large' }
     ]
   };
 
-  var ntState = { pileups: null, sample: 'treated', halfWidth: 30, cut: null, ref: '' };
+  // sizes and patterns feed Figure 5: per-sample indel lengths, and the (TermIns-adjusted)
+  // class counts whose Reads used is its denominator.
+  var ntState = { pileups: null, sizes: null, patterns: null, largeDelLen: 50,
+                  sample: 'treated', halfWidth: 30, cut: null, ref: '' };
 
   // Walks each read's CIGAR and counts, per 1-based reference position: coverage, the
   // base each read shows, deletions, and insertions just after the position.
@@ -1689,7 +1802,281 @@
     }
   }
 
-  // ---- Figure 4: indel size by position ----
+  // ---- Figure 5: indel length distribution ----
+  // One length per read pair, from the SAM files whose pairs the summary table counts:
+  //   small insertions and deletions (*_sm.sam): the CIGAR's I or D in either mate, else
+  //     the length in the clip-rescue tag (XR:Z:clip_rescue:D10@…);
+  //   terminal insertions (*_clip.sam): soft-clipped, so their length is unknown; they get
+  //     a bar of their own, and drop out without TermIns;
+  //   large deletions kept after the common-with-control test (*_only.sam): the split
+  //     read's D. A deletion seen only as a gap between the mates has no exact length; it
+  //     is estimated as the pair's span less the median insert size of the WT pairs at
+  //     the cut (*_site_*.sam), and drawn apart.
+  // The call is the core's XV tag. A pair is keyed by its read name without /1 or /2.
+
+  var SIZE_SOURCES = {
+    control: { sm: '_site_ctr_sm.sam', clip: '_site_ctr_clip.sam', large: '_ctr_only.sam', wt: '_site_ctr.sam' },
+    treated: { sm: '_site_mut_sm.sam', clip: '_site_mut_clip.sam', large: '_mut_only.sam', wt: '_site_mut.sam' }
+  };
+
+  var SIZE_COLOUR = {
+    ins:      '#2ca02c',   // small insertions, as in Figure 2
+    termIns:  '#ff7f0e',   // terminal insertions, as in Figure 2
+    del:      '#d62728',   // small deletions, as in Figure 2
+    ldSplit:  '#e3116c',   // large deletions with a split read, as in Figure 2
+    ldGap:    '#f4a6c8'    // large deletions estimated from the gap between the mates
+  };
+
+  // Gathers each pair of a SAM text into pairs[key] = { call, ins, del, rescue, span }:
+  // the longest I and D in either mate's CIGAR, the clip-rescue tag and |TLEN|.
+  function samPairs(text, pairs) {
+    if (!text) return pairs;
+    text.split('\n').forEach(function (line) {
+      if (!line || line.charAt(0) === '@') return;
+      var f = line.split('\t');
+      if (f.length < 11) return;
+      var key = f[0].replace(/\/[12](?=\||$)/, '');
+      var p = pairs[key] || (pairs[key] = { call: '', ins: 0, del: 0, rescue: '', span: 0, first: false });
+      for (var t = 11; t < f.length; t++) {
+        if (f[t].slice(0, 5) === 'XV:Z:') p.call = f[t].slice(5);
+        else if (f[t].slice(0, 5) === 'XR:Z:') p.rescue = f[t].slice(5);
+      }
+      var re = /(\d+)([MIDNSHP=X])/g, m;
+      while ((m = re.exec(f[5])) !== null) {
+        var len = parseInt(m[1], 10);
+        if (m[2] === 'I' && len > p.ins) p.ins = len;
+        if ((m[2] === 'D' || m[2] === 'N') && len > p.del) p.del = len;
+      }
+      var span = Math.abs(parseInt(f[8], 10) || 0);
+      if (span > p.span) p.span = span;
+    });
+    return pairs;
+  }
+
+  // Median |TLEN| of the WT pairs: the usual insert size, for the gap estimate. 0 if none.
+  function medianInsert(text) {
+    var pairs = samPairs(text, Object.create(null)), spans = [];
+    Object.keys(pairs).forEach(function (k) {
+      if (pairs[k].call === 'WT' && pairs[k].span) spans.push(pairs[k].span);
+    });
+    if (!spans.length) return 0;
+    spans.sort(function (a, b) { return a - b; });
+    return spans[spans.length >> 1];
+  }
+
+  // One sample's lengths: counts by length for ins, del, ldSplit and ldGap; termIns and
+  // the pairs whose length could not be read (unknownIns, unknownDel) as plain counts.
+  function buildIndelSizes(outputs, prefix, which) {
+    var src  = SIZE_SOURCES[which];
+    var text = function (suffix) { var o = outputs[prefix + suffix]; return o ? o.text : ''; };
+    var out  = { ins: {}, del: {}, ldSplit: {}, ldGap: {},
+                 termIns: 0, unknownIns: 0, unknownDel: 0, insert: 0 };
+    var add  = function (map, len) { map[len] = (map[len] || 0) + 1; };
+
+    var small = samPairs(text(src.sm), Object.create(null));
+    Object.keys(small).forEach(function (k) {
+      var p = small[k], r = /([ID])(\d+)@/.exec(p.rescue);
+      if (p.call === 'INS') {
+        var li = p.ins || (r && r[1] === 'I' ? parseInt(r[2], 10) : 0);
+        if (li) add(out.ins, li); else out.unknownIns++;
+      } else if (p.call === 'DEL') {
+        var ld = p.del || (r && r[1] === 'D' ? parseInt(r[2], 10) : 0);
+        if (ld) add(out.del, ld); else out.unknownDel++;
+      }
+    });
+
+    out.termIns = Object.keys(samPairs(text(src.clip), Object.create(null))).length;
+
+    var large = samPairs(text(src.large), Object.create(null));
+    out.insert = medianInsert(text(src.wt));
+    Object.keys(large).forEach(function (k) {
+      var p = large[k];
+      if (p.del) { add(out.ldSplit, p.del); return; }
+      var est = out.insert ? p.span - out.insert : 0;
+      if (est > 0) add(out.ldGap, est); else out.unknownDel++;
+    });
+    return out;
+  }
+
+  // Categories for the x axis: each length below `exact` (the large-deletion length) on
+  // its own, up to the longest seen; longer ones in bins that widen 1-2-5 per decade, up to
+  // the one holding maxLen, so 3 bp and 3 kb fit on one axis. Each is { lo, hi, label }.
+  var SIZE_EDGES = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
+
+  function sizeBins(lengths, exact) {
+    var maxSmall = 0, maxLen = 0, bins = [];
+    lengths.forEach(function (l) {
+      if (l < exact && l > maxSmall) maxSmall = l;
+      if (l > maxLen) maxLen = l;
+    });
+    for (var l = 1; l <= maxSmall; l++) bins.push({ lo: l, hi: l, label: String(l) });
+    if (maxLen < exact) return bins;
+
+    var kb = function (v) { return v >= 1000 ? (v / 1000) + ' kb' : v + ' bp'; };
+    var edges = [exact].concat(SIZE_EDGES.filter(function (e) { return e > exact; }));
+    for (var i = 0; i < edges.length && edges[i] <= maxLen; i++) {
+      var lo = edges[i], next = edges[i + 1];
+      if (next === undefined) { bins.push({ lo: lo, hi: Infinity, label: '≥' + kb(lo) }); break; }
+      var label = lo >= 1000 ? (lo / 1000) + '–' + (next / 1000) + ' kb'
+                             : lo + '–' + (next - 1);
+      bins.push({ lo: lo, hi: next - 1, label: label });
+    }
+    return bins;
+  }
+
+  // Bar heights for one series over the bins: y as % of Reads used, counts for the hover.
+  function binSeries(map, bins, used) {
+    var n = bins.map(function () { return 0; });
+    Object.keys(map).forEach(function (len) {
+      var l = +len;
+      for (var i = 0; i < bins.length; i++) {
+        if (l >= bins[i].lo && l <= bins[i].hi) { n[i] += map[len]; break; }
+      }
+    });
+    return { y: n.map(function (c) { return used ? c / used * 100 : 0; }), counts: n };
+  }
+
+  function renderIndelSizes() {
+    var mount = document.getElementById('indelsize-chart');
+    var empty = document.getElementById('indelsize-empty');
+    var note  = document.getElementById('indelsize-note');
+    if (!mount) return;
+
+    var which = ntState.sample;
+    var sz    = ntState.sizes ? ntState.sizes[which] : null;
+    var v     = ntState.patterns ? (ntState.patterns[which] || {}) : {};
+    var used  = v.total_analyzed ? v.total_analyzed.n : 0;
+    var termIns = includeTermIns && sz ? sz.termIns : 0;
+
+    var count = function (map) {
+      return Object.keys(map || {}).reduce(function (a, k) { return a + map[k]; }, 0);
+    };
+    var nIns = sz ? count(sz.ins) + termIns + sz.unknownIns : 0;
+    var nDel = sz ? count(sz.del) + count(sz.ldSplit) + count(sz.ldGap) + sz.unknownDel : 0;
+
+    var why = (!sz || !used) ? 'No read pairs analysed for this sample.'
+            : !(nIns + nDel)  ? 'No insertions or deletions in this sample.'
+            : !plotlyAvailable() ? 'Plotly could not be loaded, so this plot is unavailable.'
+            : null;
+    if (why) {
+      if (window.Plotly) window.Plotly.purge(mount);
+      mount.innerHTML = '';
+      if (empty) { empty.textContent = why; empty.classList.remove('d-none'); }
+      if (note) note.textContent = '';
+      return;
+    }
+    if (empty) empty.classList.add('d-none');
+
+    var exact = ntState.largeDelLen;
+    var keys  = function (map) { return Object.keys(map).map(Number); };
+    var insBins = sizeBins(keys(sz.ins), exact);
+    var delBins = sizeBins(keys(sz.del).concat(keys(sz.ldSplit), keys(sz.ldGap)), exact);
+
+    // Pairs without a length go in a last category, past the lengths: terminal
+    // insertions, and any indel whose length could not be read.
+    var insX = insBins.map(function (b) { return b.label; });
+    var delX = delBins.map(function (b) { return b.label; });
+    if (termIns) insX.push('TermIns');
+    if (sz.unknownIns) insX.push('unknown');
+    if (sz.unknownDel) delX.push('unknown');
+
+    var pad = function (series, n) {
+      while (series.y.length < n) { series.y.push(0); series.counts.push(0); }
+      return series;
+    };
+    // customdata: [pairs, the category as the hover names it]
+    var bar = function (name, x, series, colour, axis) {
+      return {
+        type: 'bar', name: name, x: x, y: series.y,
+        customdata: x.map(function (c, i) {
+          return [series.counts[i], /^\d+(\u2013\d+)?$/.test(c) ? c + ' bp' : c];
+        }),
+        xaxis: axis.x, yaxis: axis.y,
+        marker: { color: colour, line: { width: 0 } },
+        hovertemplate: '%{customdata[1]}: %{y:.2f}% (%{customdata[0]:,} pairs)<extra>' + name + '</extra>'
+      };
+    };
+    // one value at a single category (TermIns, unknown), zero elsewhere
+    var lone = function (x, at, n) {
+      var s = { y: x.map(function () { return 0; }), counts: x.map(function () { return 0; }) };
+      var i = x.indexOf(at);
+      s.counts[i] = n; s.y[i] = n / used * 100;
+      return s;
+    };
+
+    var A = { x: 'x', y: 'y' }, B = { x: 'x2', y: 'y2' };
+    var traces = [bar('Insertion', insX, pad(binSeries(sz.ins, insBins, used), insX.length),
+                      SIZE_COLOUR.ins, A)];
+    if (termIns) {
+      traces.push(bar('Terminal insertion (length unknown)', insX, lone(insX, 'TermIns', termIns),
+                      SIZE_COLOUR.termIns, A));
+    }
+    if (sz.unknownIns) {
+      traces.push(bar('Insertion, length not read', insX, lone(insX, 'unknown', sz.unknownIns),
+                      '#9aa5b1', A));
+    }
+    traces.push(bar('Deletion', delX, pad(binSeries(sz.del, delBins, used), delX.length),
+                    SIZE_COLOUR.del, B));
+    traces.push(bar('Large deletion (split read)', delX, pad(binSeries(sz.ldSplit, delBins, used), delX.length),
+                    SIZE_COLOUR.ldSplit, B));
+    traces.push(bar('Large deletion (mate gap, estimated)', delX, pad(binSeries(sz.ldGap, delBins, used), delX.length),
+                    SIZE_COLOUR.ldGap, B));
+    if (sz.unknownDel) {
+      traces.push(bar('Deletion, length not read', delX, lone(delX, 'unknown', sz.unknownDel),
+                      '#9aa5b1', B));
+    }
+    // empty series stay out of the legend
+    traces = traces.filter(function (t) { return t.customdata.some(function (c) { return c[0] > 0; }); });
+
+    var ink   = cssVar('--text-primary',   '#111827');
+    var muted = cssVar('--text-secondary', '#6b7280');
+    var grid  = cssVar('--border',         '#e5e7eb');
+    var axis  = { type: 'category', showgrid: false, zeroline: false, linecolor: grid,
+                  tickfont: { color: muted, size: 10 } };
+    var yaxis = { rangemode: 'tozero', ticksuffix: '%', gridcolor: grid, zeroline: false,
+                  tickfont: { color: muted, size: 10 } };
+
+    window.Plotly.react(mount, traces, {
+      barmode: 'stack',
+      bargap: 0.15,
+      height: 360,
+      margin: { l: 58, r: 20, t: 46, b: 96 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { family: 'Inter, system-ui, sans-serif', size: 11, color: ink },
+      xaxis:  Object.assign({}, axis, { domain: [0, 0.46], anchor: 'y',
+                title: { text: 'Insertion length (bp)', standoff: 8 } }),
+      yaxis:  Object.assign({}, yaxis, { anchor: 'x',
+                title: { text: 'Frequency (% of reads used)' } }),
+      xaxis2: Object.assign({}, axis, { domain: [0.56, 1], anchor: 'y2',
+                title: { text: 'Deletion length (bp)', standoff: 8 } }),
+      yaxis2: Object.assign({}, yaxis, { anchor: 'x2' }),
+      legend: { orientation: 'h', y: -0.3, x: 0, font: { size: 11 }, traceorder: 'normal' },
+      // panel titles pinned to each panel's own domain, as in Figure 6
+      annotations: [
+        { text: 'Insertion size', xref: 'x domain', x: 0.5, xanchor: 'center',
+          yref: 'y domain', y: 1, yanchor: 'bottom', yshift: 10, showarrow: false, font: { size: 12 } },
+        { text: 'Deletion size', xref: 'x2 domain', x: 0.5, xanchor: 'center',
+          yref: 'y2 domain', y: 1, yanchor: 'bottom', yshift: 10, showarrow: false, font: { size: 12 } }
+      ]
+    }, { responsive: true, displaylogo: false,
+         modeBarButtonsToRemove: ['select2d', 'lasso2d'] });
+
+    if (note) {
+      var gap = count(sz.ldGap);
+      note.textContent =
+        'Figure 5. How often each insertion and deletion length occurs, as a share of the ' +
+        used.toLocaleString() + ' Reads used in analysis; one length per read pair. Lengths ' +
+        'below ' + exact + ' bp each have a bar; longer ones are binned. ' +
+        (termIns ? 'Terminal insertions are soft-clipped, so their length is unknown. ' : '') +
+        (gap ? gap.toLocaleString() + ' large deletions seen only as a gap between the mates ' +
+               'are estimated from the pair\'s span less the median insert size (' +
+               sz.insert.toLocaleString() + ' bp). ' : '') +
+        'Large deletions also found in the control are left out, as in Table 1.';
+    }
+  }
+
+  // ---- Figure 6: indel size by position ----
 
   var INS_STEM   = '#c0392b';   // insertions
   var DEL_LO_STEM = '#5b53b8';  // deletions at the cut
@@ -1804,13 +2191,13 @@
 
     if (note) {
       note.textContent =
-        'Figure 4. Mean length of the indels at each reference position \u2014 height is ' +
+        'Figure 6. Mean length of the indels at each reference position \u2014 height is ' +
         'length, not how often. Deletions use a log axis: indigo at the cut, grey for ' +
         'split reads whose deletion spans the base.';
     }
   }
 
-  // ---- Figure 5: mutation position distribution ----
+  // ---- Figure 4: mutation position distribution ----
 
   var MUT_COLOUR = {
     ins:   '#1a9850',   // insertions
@@ -1910,25 +2297,26 @@
 
     if (note) {
       note.textContent =
-        'Figure 5. How often each change occurs at each position, as a share of the reads ' +
+        'Figure 4. How often each change occurs at each position, as a share of the reads ' +
         'covering it. Shaded: the \u00b113 bp window the core treats as on-target. Dotted: ' +
         'spanning split-read deletions.';
     }
   }
 
-  // ---- tabs for Figures 4 and 5 ----
-  var indelTab = 'size';
+  // ---- tabs for Figures 4-6 ----
+  // Mutation position (Figure 4) first; the size tab holds Figures 5 and 6.
+  var indelTab = 'pos';
 
   function renderIndelTab() {
     // A hidden pane has zero width, so draw only the visible tab, and redraw on switching.
-    if (indelTab === 'size') renderIndelLengths();
+    if (indelTab === 'size') { renderIndelSizes(); renderIndelLengths(); }
     else renderMutationPositions();
   }
 
   (function wireIndelTabs() {
     var tabs = [
-      { btn: 'indel-tab-size', pane: 'indel-pane-size', key: 'size' },
-      { btn: 'indel-tab-pos',  pane: 'indel-pane-pos',  key: 'pos'  }
+      { btn: 'indel-tab-pos',  pane: 'indel-pane-pos',  key: 'pos'  },
+      { btn: 'indel-tab-size', pane: 'indel-pane-size', key: 'size' }
     ];
     tabs.forEach(function (t) {
       var b = document.getElementById(t.btn);
@@ -1947,16 +2335,22 @@
     });
   })();
 
-  function updateNucleotide(outputs, prefix, params, refSeq) {
+  // pat: the class counts, already adjusted for TermIns.
+  function updateNucleotide(outputs, prefix, params, refSeq, pat) {
     ntState.ref = refSeq || '';
     ntState.cut = params.targetStart + params.cleavage;  // 1-based first base after the cut
+    ntState.largeDelLen = params.largeDelLen || 50;
+    ntState.patterns = pat;
     ntState.pileups = {};
+    ntState.sizes = {};
     Object.keys(NT_SOURCES).forEach(function (which) {
       var sources = NT_SOURCES[which].map(function (src) {
         var o = outputs[prefix + src.suffix];
-        return { text: o ? o.text : '', kind: src.kind };
+        var skip = src.termIns && !includeTermIns;
+        return { text: o && !skip ? o.text : '', kind: src.kind };
       });
       ntState.pileups[which] = buildPileup(sources, ntState.ref.length || 1);
+      ntState.sizes[which] = buildIndelSizes(outputs, prefix, which);
     });
     renderNucleotide();
     renderIndelTab();
@@ -2006,6 +2400,7 @@
     var run = batchRuns[i];
     if (!run || !run.result) return;
     lastRun = run.result;
+    shownRun = i;
     renderRun(run.result, run.params);
     var pick = document.getElementById('batch-pick');
     if (pick) pick.value = String(i);
@@ -2017,9 +2412,10 @@
     }
   }
 
+  // The run's class counts, adjusted for TermIns.
   function runPattern(run) {
     var prefix = run.params.gene + '_' + run.params.sample;
-    return parseMutationSummary((run.result.outputs[prefix + '_mutation_summary.tsv'] || {}).text);
+    return applyTermIns(parseMutationSummary((run.result.outputs[prefix + '_mutation_summary.tsv'] || {}).text));
   }
 
   function renderBatchSummary(runs) {
@@ -2083,7 +2479,8 @@
         var row = [run.params.sample, 'ok', g[0], g[1], g[1] - g[2], used];
         CLASSES.forEach(function (c) {
           var x = v[c.key];
-          row.push(x ? x.n : '', x && used ? (x.n / used * 100).toFixed(2) : '');
+          if (!x || x.excluded != null) { row.push('', ''); return; }   // left blank without TermIns
+          row.push(x.n, used ? (x.n / used * 100).toFixed(2) : '');
         });
         row.push('');
         lines.push(row.join('\t'));
@@ -2093,15 +2490,20 @@
   }
 
   // One zip: batch_summary.tsv, and each finished sample's files in a folder named after it.
+  // Without TermIns the summary is batch_summary_no_termins.tsv, and each folder also holds
+  // the sample's summary without them.
   function downloadBatch(runs) {
     if (typeof fflate === 'undefined' || !fflate.zipSync) {
       showError('Zip support is unavailable; download each sample\'s files from its results.');
       return;
     }
-    var files = { 'batch_summary.tsv': fflate.strToU8(batchSummaryTsv(runs)) };
+    var files = {};
+    files[includeTermIns ? 'batch_summary.tsv' : 'batch_summary_no_termins.tsv'] =
+      fflate.strToU8(batchSummaryTsv(runs));
     runs.forEach(function (run) {
       if (!run.result) return;
-      var outs = run.result.outputs || {};
+      var prefix = run.params.gene + '_' + run.params.sample;
+      var outs = downloadFiles(run.result.outputs || {}, prefix, runPattern(run));
       Object.keys(outs).forEach(function (n) {
         if (outs[n].size > 0) files[run.params.sample + '/' + n] = fflate.strToU8(outs[n].text);
       });
@@ -2118,16 +2520,16 @@
   function renderRun(result, params) {
     var outputs = result.outputs || {};
     var prefix  = params.gene + '_' + params.sample;
-    var pat     = parseMutationSummary((outputs[prefix + '_mutation_summary.tsv'] || {}).text);
+    var pat     = applyTermIns(parseMutationSummary((outputs[prefix + '_mutation_summary.tsv'] || {}).text));
 
     // in page order, labelled as the page captions them
-    fillSummaryTable(pat, result.metrics);                    // Table 1
-    updateSummaryChart(result.metrics);                       // Figure 1
-    renderPies(pat);                                          // Figure 2
-    renderRescueNote(result.metrics, params);                 // under Figure 2
-    updateNucleotide(outputs, prefix, params, refSequence);   // Figures 3–5
-    renderDownloads(outputs, prefix);                         // result files
-    renderViewer(outputs, prefix, params, result.refLen);     // Figure 6
+    fillSummaryTable(pat, result.metrics);                          // Table 1
+    updateSummaryChart(result.metrics);                             // Figure 1
+    renderPies(pat);                                                // Figure 2
+    renderRescueNote(result.metrics, params);                       // under Figure 2
+    updateNucleotide(outputs, prefix, params, refSequence, pat);    // Figures 3–6
+    renderDownloads(downloadFiles(outputs, prefix, pat), prefix);   // result files
+    renderViewer(outputs, prefix, params, result.refLen);           // Figure 7
   }
 
   // How many terminal-clip pairs clip rescue re-called per sample, and which
@@ -2255,7 +2657,7 @@
     }
   }
 
-  // ---- Figure 6: alignment viewer ----
+  // ---- Figure 7: alignment viewer ----
   var viewer = null;
 
   var TRACKS = [
@@ -2264,7 +2666,7 @@
     { suffix: '_ctr_only.sam',    label: 'Control-only',                 hint: 'Deletions seen only in the control' },
     { suffix: '_site_mut.sam',    label: 'Treated reads at the cut',     hint: 'Normal reads spanning the cleavage site' },
     { suffix: '_site_mut_sm.sam', label: 'Treated small indels',         hint: 'Indels / substitutions within ±13 bp of the cut' },
-    { suffix: '_site_mut_clip.sam', label: 'Treated terminal insertions (clip)', hint: 'Reads soft-clipped at the cut that clip rescue did not re-call' }
+    { suffix: '_site_mut_clip.sam', label: 'Treated terminal insertions (clip)', hint: 'Reads soft-clipped at the cut that clip rescue did not re-call', termIns: true }
   ];
 
   function renderViewer(outputs, prefix, params, refLen) {
@@ -2275,6 +2677,7 @@
 
     var available = [];
     TRACKS.forEach(function (t) {
+      if (t.termIns && !includeTermIns) return;
       var o = outputs[prefix + t.suffix];
       if (!o || !o.text.trim()) return;
       var recs = window.ExCasViewer.parseSam(o.text);

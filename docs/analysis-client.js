@@ -1,13 +1,25 @@
 // Starts the analysis worker and forwards its messages to callbacks:
-//   new AnalysisClient({ onProgress(pct, message), onDone(result), onError(message) })
+//   new AnalysisClient({ onProgress(pct, message, detail), onDone(result), onError(message) })
 //   client.start(params, files, labels); client.cancel();
+// detail is the worker's progress message: stage, frac and files { done, total, current }.
 // result is the worker's 'done' message: stdout, metrics, outputs, refLen, staged, elapsedMs.
 (function () {
   'use strict';
 
-  // Progress-bar percent per worker stage. Only 'stage' (copying the input files)
-  // reports a real fraction; the core reports only when a stage ends.
-  var STAGE_PCT = { load: 10, stage: 12, run: 40, run2: 62, post: 82, report: 90, collect: 96 };
+  // Progress-bar range per worker stage, in percent. A stage that reports a fraction
+  // (copying the inputs, the two alignments, the report's raw-read check, collecting the
+  // results) moves through its range; the others sit at its start. app.js splits the
+  // range at run and run2 into the control and treated bars.
+  var STAGE_RANGE = {
+    load: [0, 2], stage: [2, 14], hash: [14, 15], run: [15, 42], run2: [42, 69],
+    post: [69, 71], report: [71, 97], collect: [97, 100]
+  };
+
+  function stagePct(stage, frac) {
+    var r = STAGE_RANGE[stage];
+    if (!r) return 60;
+    return r[0] + (r[1] - r[0]) * (frac != null ? Math.max(0, Math.min(1, frac)) : 0);
+  }
 
   function AnalysisClient(callbacks) {
     this.cb = callbacks || {};
@@ -29,10 +41,7 @@
       var msg = ev.data || {};
 
       if (msg.type === 'progress') {
-        var pct = (msg.stage === 'stage' && msg.frac != null)
-          ? 12 + 23 * msg.frac
-          : (STAGE_PCT[msg.stage] != null ? STAGE_PCT[msg.stage] : 60);
-        if (self.cb.onProgress) self.cb.onProgress(pct, msg.message || '');
+        if (self.cb.onProgress) self.cb.onProgress(stagePct(msg.stage, msg.frac), msg.message || '', msg);
         return;
       }
       if (msg.type === 'done') {
@@ -65,5 +74,6 @@
     }
   };
 
+  AnalysisClient.STAGE_RANGE = STAGE_RANGE;
   window.AnalysisClient = AnalysisClient;
 })();

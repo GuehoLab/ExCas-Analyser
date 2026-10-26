@@ -27,11 +27,14 @@ It compares a Cas9-treated sample with an untreated control, runs entirely in th
 - Quantification of WT, small insertions, small deletions, substitutions, terminal insertions and large deletions
 - Batch mode: up to 4 Cas9-treated samples against one control, run in parallel; a failed sample is skipped
 - Summary table per sample: total reads, unmapped, reads used, and each mutation class
+- Live progress: how far each alignment has read, and which result file is being written (x / y)
+- Results with or without terminal insertions (TermIns): one switch updates the table, figures, viewer and downloads
 - Visualization of:
   - Read pairs per sample, all and aligned (linear or log scale)
   - Mutation class proportions per sample
   - Base composition around the cleavage site
-  - Indel size and position distributions
+  - Mutation position distribution
+  - Insertion and deletion length distributions (frequency per length), and mean indel length by position
   - Read alignments, coloured by deletion cluster
 - The same analysis for AI agents through the MCP server
 
@@ -73,6 +76,11 @@ ExCas-Analyzer has **2 usage modes**:
 - A sample that fails is marked failed and skipped; the others still finish
 - Sample names must be unique and cannot contain `\ / : * ? " < > |`
 - The results start with a batch summary; click a row, or pick a sample, to show its results
+
+**Terminal insertions (TermIns)**
+- A terminal insertion runs off the end of the read and is soft-clipped, so its position and length are uncertain
+- **Without TermIns** (above the summary table) leaves those pairs out of Reads used; the other classes, the figures, the viewer and the batch summary are recomputed
+- The core's files are unchanged; the downloads add `<gene>_<sample>_mutation_summary_no_termins.tsv` (and `batch_summary_no_termins.tsv` for a batch)
 
 ### 2. MCP server
 

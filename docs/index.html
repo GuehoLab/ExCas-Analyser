@@ -390,8 +390,14 @@
           </div>
 
           <div class="progress-label">Cas9-treated sample</div>
-          <div class="progress mb-3" style="height:22px">
+          <div class="progress mb-2" style="height:22px">
             <div class="progress-bar progress-bar-striped progress-bar-animated" id="mut-bar" role="progressbar" style="width:0%">0%</div>
+          </div>
+
+          <!-- result files written by the core: done / total, the bar moving through the report's raw-read check -->
+          <div class="progress-label">Result files</div>
+          <div class="progress mb-3" style="height:22px">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" id="res-bar" role="progressbar" style="width:0%">0/0</div>
           </div>
 
           <div class="form-help" id="stage">Preparing…</div>
@@ -434,7 +440,8 @@
         </div>
         <div class="form-help mb-3">Cas9-treated rows, one per sample. Each sample was analysed
           against the same control; its control row is in the full results below. Click a row,
-          or pick a sample, to show its results. A sample that failed shows why.</div>
+          or pick a sample, to show its results. A sample that failed shows why. The
+          With / Without TermIns switch below applies here too.</div>
         <div class="d-flex align-items-center gap-2">
           <label class="form-label mb-0" for="batch-pick">Showing results for</label>
           <select id="batch-pick" class="form-select form-select-sm" style="width:auto"></select>
@@ -442,8 +449,16 @@
       </div>
 
       <div class="app-card p-3 p-md-4">
-        <!-- Summary table -->
-        <div class="section-title mb-2">Summary</div>
+        <!-- Summary table, with the terminal-insertion switch that applies to every result below -->
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+          <div class="section-title mb-0">Summary</div>
+          <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Terminal insertions">
+            <button type="button" class="btn btn-outline-secondary active" id="termins-on"
+                    title="Count terminal insertions (TermIns) as the core does">With TermIns</button>
+            <button type="button" class="btn btn-outline-secondary" id="termins-off"
+                    title="Leave out terminal insertions: soft-clipped at a read end, so their alignment is uncertain">Without TermIns</button>
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table table-sm table-bordered align-middle" id="summary-table">
             <thead class="table-light">
@@ -511,35 +526,42 @@
         <div id="nt-empty" class="alert alert-secondary d-none" role="status"></div>
         <div class="form-help mb-4" id="nt-note"></div>
 
-        <!-- Figures 4 and 5: indel size / mutation position tabs -->
+        <!-- Figures 4-6: mutation position / indel size tabs -->
         <div class="section-title mb-1">Indel Characterisation</div>
-        <p class="form-help mb-2">Figures 4 and 5, for the sample and window selected above.</p>
+        <p class="form-help mb-2">Figures 4&ndash;6, for the sample selected above; Figures 4 and 6
+          also for the window selected above.</p>
 
         <ul class="nav nav-tabs mb-3" id="indel-tabs" role="tablist">
           <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="indel-tab-size" type="button"
-                    role="tab" aria-controls="indel-pane-size" aria-selected="true">
-              Insertion / deletion size
+            <button class="nav-link active" id="indel-tab-pos" type="button"
+                    role="tab" aria-controls="indel-pane-pos" aria-selected="true">
+              Mutation position
             </button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link" id="indel-tab-pos" type="button"
-                    role="tab" aria-controls="indel-pane-pos" aria-selected="false">
-              Mutation position
+            <button class="nav-link" id="indel-tab-size" type="button"
+                    role="tab" aria-controls="indel-pane-size" aria-selected="false">
+              Insertion / deletion size
             </button>
           </li>
         </ul>
 
-        <div id="indel-pane-size" role="tabpanel" aria-labelledby="indel-tab-size">
-          <div id="indel-chart" style="min-height:340px"></div>
-          <div id="indel-empty" class="alert alert-secondary d-none" role="status"></div>
-          <div class="form-help mb-4" id="indel-note"></div>
-        </div>
-
-        <div id="indel-pane-pos" class="d-none" role="tabpanel" aria-labelledby="indel-tab-pos">
+        <div id="indel-pane-pos" role="tabpanel" aria-labelledby="indel-tab-pos">
           <div id="mutpos-chart" style="min-height:340px"></div>
           <div id="mutpos-empty" class="alert alert-secondary d-none" role="status"></div>
           <div class="form-help mb-4" id="mutpos-note"></div>
+        </div>
+
+        <div id="indel-pane-size" class="d-none" role="tabpanel" aria-labelledby="indel-tab-size">
+          <!-- Figure 5: indel length distribution -->
+          <div id="indelsize-chart" style="min-height:340px"></div>
+          <div id="indelsize-empty" class="alert alert-secondary d-none" role="status"></div>
+          <div class="form-help mb-4" id="indelsize-note"></div>
+
+          <!-- Figure 6: mean indel length by position -->
+          <div id="indel-chart" style="min-height:340px"></div>
+          <div id="indel-empty" class="alert alert-secondary d-none" role="status"></div>
+          <div class="form-help mb-4" id="indel-note"></div>
         </div>
 
         <!-- Result file downloads -->
@@ -558,9 +580,9 @@
           <div class="form-help mt-1" id="dl-note"></div>
         </div>
 
-        <!-- Figure 6: alignment viewer -->
+        <!-- Figure 7: alignment viewer -->
         <div class="section-title mb-1">Alignment Viewer</div>
-        <p class="form-help">Figure 6. Reads coloured by the breakpoint group the tool assigned,
+        <p class="form-help">Figure 7. Reads coloured by the breakpoint group the tool assigned,
           deletions drawn as a thin connecting line, mates grouped into one event.
           Scroll to zoom, drag to pan.</p>
 
