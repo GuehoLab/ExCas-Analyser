@@ -29,6 +29,7 @@ It compares a Cas9-treated sample with an untreated control, runs entirely in th
 - Summary table per sample: total reads, unmapped, reads used, and each mutation class
 - Live progress: how far each alignment has read, and which result file is being written (x / y)
 - Results with or without terminal insertions (TermIns): one switch updates the table, figures, viewer and downloads
+- Result files saved as one zip per sample, with the HTML report in English
 - Visualization of:
   - Read pairs per sample, all and aligned (linear or log scale)
   - Mutation class proportions per sample
@@ -68,6 +69,8 @@ ExCas-Analyzer has **2 usage modes**:
 2. Paste the full reference sequence (5' to 3'), or load a FASTA file.
 3. Select the PAM and enter the target sequence (5' to 3', without PAM).
 4. Enter the gene name, then click **Submit**.
+
+- **Reset** clears every input and puts the options back to their defaults; refreshing the page also starts from an empty form
 
 **Batch mode**
 - Click **Add treated sample** for each further Cas9-treated sample (up to 4), and give each a name
@@ -113,7 +116,7 @@ node local/mcp/server.mjs
 
 - Click **Load example · HPRT1**, then **Submit**
 - Runs a simulated HPRT1 amplicon (40,115 read pairs per sample)
-- Results appear on the page; **Download all** saves every result file as a zip
+- Results appear on the page; **Download all** saves the result files as one zip, `{gene}_{sample}.zip`
 
 ### Example 2: MCP server
 
@@ -145,18 +148,24 @@ node local/mcp/server.mjs
 - Sample name : Second part of the output file names
 - K : k-mer length for indexing the reference (default: 11)
 - Cleavage offset : Cut position counted from the target start (default: derived from the PAM and strand)
-- dist_cut (#13) : Furthest a large deletion's read ends may be from the cut, in bp; caps the deletion size that can be called (default: 8000)
-- full_sam (#14) : Also write the full alignment SAM; MCP only, always off on the page (default: off)
-- min_gap (#16) : Smallest gap between the mates of a non-split pair to count as a large deletion, in bp (default: 400)
-- anchor_min (#17) : Lowest split-read anchor score, length − 4 × mismatches; 0 turns it off (default: 13)
-- cut_between (#18) : The cleavage site must lie between the two mates (default: on)
-- ins_fix (#19) : Record read-side gaps as insertions (default: on)
-- ins_max (#20) : Longest insertion kept; 0 means no limit (default: 0)
-- report (#21) : Write the HTML report and TSV tables (default: on)
-- large_del_len (#22) : Shortest deletion inside one read that counts as large, in bp; 100 is the paper's definition (default: 50)
-- clip_rescue (#23) : Re-call a small indel within 13 bp of a read end, seen only as a soft clip, as the allele seen with full anchors in at least 3 pairs (default: on)
-- common_mode (#24) : How a large deletion is judged common with the control: pair-based, with breakpoints within max(20 bp, 2% of its length), or k-means clusters (default: pair-based)
 - Run at once (-p) : Web page batch only; how many samples run at the same time, 1–4 (default: Auto)
+
+### CLI options
+
+The core's optional arguments, named as in its usage text, with their position in brackets (#13–#24, after the 12 required ones):
+
+- --dist_cut [#13] : Furthest a large deletion's read ends may be from the cut, in bp; caps the deletion size that can be called (default: 8000)
+- --full_sam [#14] : Also write the full alignment SAM; MCP only, always off on the page (default here: off; the CLI's: on)
+- --out_fmt [#15] : Output format; always SAM here, because the viewer reads SAM (the CLI's default: BAM)
+- --min_gap [#16] : Smallest gap between the mates of a non-split pair to count as a large deletion, in bp (default: 400)
+- --anchor_min [#17] : Lowest split-read anchor score, length − 4 × mismatches; 0 turns it off (default: 13)
+- --cut_between [#18] : The cleavage site must lie between the two mates (default: on)
+- --ins_fix [#19] : Record read-side gaps as insertions (default: on)
+- --ins_max [#20] : Longest insertion kept; 0 means no limit (default: 0)
+- --report [#21] : Write the HTML report and TSV tables (default: on)
+- --large_del_len [#22] : Shortest deletion inside one read that counts as large, in bp; 100 is the paper's definition (default: 50)
+- --clip_rescue [#23] : Re-call a small indel within 13 bp of a read end, seen only as a soft clip, as the allele seen with full anchors in at least 3 pairs (default: on)
+- --common_mode [#24] : How a large deletion is judged common with the control: pair-based, with breakpoints within max(20 bp, 2% of its length), or k-means clusters (default: pair-based)
 
 ### Coordinates
 
@@ -174,10 +183,16 @@ node local/mcp/server.mjs
 
 ## Result Files
 
-Each file is named `{gene}_{sample}_{suffix}`:
+Each sample's files are saved together as one zip, `{gene}_{sample}.zip`:
+
+- **Download all** saves every finished sample's zip
+- **Individual files** lists the zips, to save one at a time
+
+Inside, each file is named `{gene}_{sample}_{suffix}`:
 
 - mutation_summary.tsv – read pairs and percentage per mutation class, per sample
-- report.html – standalone HTML report
+- mutation_summary_no_termins.tsv – the same without terminal insertions (only with **Without TermIns**)
+- report.html – standalone HTML report, in English (the core writes it in Korean; the page and the MCP server translate it)
 - report.tsv – run parameters and counts per class, tab-separated
 - mut_only.sam – large deletions found only in the treated sample (CRISPR-induced)
 - mut_common.sam – large deletions also found in the control (removed)
@@ -228,6 +243,7 @@ MCP runs also save:
 ```
 docs/                 web page served by GitHub Pages
   kmer_align.wasm     the analysis core (WebAssembly)
+  report-en.js        puts the core's HTML report into English
   testdata/HPRT1/     example data for Load example
   .nojekyll           GitHub Pages serves the files as they are
 local/                files for running locally

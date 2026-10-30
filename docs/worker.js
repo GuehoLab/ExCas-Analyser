@@ -3,7 +3,7 @@
 // In:  { type:'run', params, files:{ref,ctr1,ctr2,mut1,mut2}, labels }
 // Out: { type:'progress'|'done'|'error', … }; progress carries stage, frac (0..1 or
 //      null), message and files { done, total, current, next } for the result files.
-importScripts('kmer_align.js', 'vendor/fflate.min.js');
+importScripts('kmer_align.js', 'vendor/fflate.min.js', 'report-en.js');
 
 function post(type, payload) { self.postMessage(Object.assign({ type: type }, payload)); }
 
@@ -112,6 +112,9 @@ self.onmessage = async (ev) => {
 
     // params are 1-based; the core takes a 0-based target start/end. The cleavage
     // offset is counted from the target start, so it needs no change.
+    // The arguments are the CLI's positional ones in order, less #15 out_fmt, which the
+    // wasm entry point fixes to SAM: up to full_sam argument n is the CLI's #n, and from
+    // min_gap on it is #(n + 1), so min_gap, the 15th here, is the CLI's #16.
     let rc;
     try {
       rc = Module.ccall(
@@ -148,6 +151,11 @@ self.onmessage = async (ev) => {
                          message: 'Collecting results (' + (i + 1) + '/' + listed.length + '): ' + name });
       const data = FS.readFile('/out/' + name);
       out[name] = { size: data.length, text: dec.decode(data) };
+      // The core writes its HTML report in Korean; report-en.js puts it into English.
+      if (/_report\.html$/.test(name)) {
+        const text = ExCasReportEn.translate(out[name].text);
+        out[name] = { size: new TextEncoder().encode(text).length, text: text };
+      }
     });
 
     const refLenM = stdout.match(/\[ref\] .*?: (\d+) bp/);

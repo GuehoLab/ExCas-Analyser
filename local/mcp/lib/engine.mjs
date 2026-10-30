@@ -12,6 +12,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DOCS_DIR = path.resolve(HERE, '..', '..', '..', 'docs');
 
 const require_ = createRequire(import.meta.url);
+// Puts the core's Korean HTML report into English; shared with the web page.
+const reportEn = require_(path.join(DOCS_DIR, 'report-en.js'));
 
 // The core's default options, except full_sam, which is off (that SAM is large).
 export const DEFAULTS = Object.freeze({
@@ -213,6 +215,9 @@ export async function runAnalysis(job, onProgress = () => {}) {
   onProgress('Building the k-mer hash table…', 0.15);
   // The core takes a 0-based target start/end. The cleavage offset counts from the
   // target start, so it needs no change.
+  // The arguments are the CLI's positional ones in order, less #15 out_fmt, which the
+  // wasm entry point fixes to SAM: up to full_sam argument n is the CLI's #n, and from
+  // min_gap on it is #(n + 1), so min_gap, the 15th here, is the CLI's #16.
   const rc = Module.ccall(
     'run_analysis', 'number',
     ['string', 'string', 'string', 'string', 'string',
@@ -241,7 +246,11 @@ export async function runAnalysis(job, onProgress = () => {}) {
   const outputs = [];
   for (const name of FS.readdir('/out')) {
     if (name === '.' || name === '..') continue;
-    const data = FS.readFile('/out/' + name);
+    let data = FS.readFile('/out/' + name);
+    // The core writes its HTML report in Korean; docs/report-en.js puts it into English.
+    if (name.endsWith('_report.html')) {
+      data = Buffer.from(reportEn.translate(Buffer.from(data).toString('utf8')), 'utf8');
+    }
     const dest = path.join(opt.outDir, name);
     await fsp.writeFile(dest, data);
     outputs.push({ name, bytes: data.length, path: dest });

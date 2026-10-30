@@ -46,7 +46,9 @@
   <section class="py-3 py-md-4">
     <div class="container container-narrow">
       <div class="app-card p-3 p-md-4">
-        <form id="analysisForm" novalidate>
+        <!-- autocomplete off: browsers would otherwise put typed values back on a refresh,
+             but not the example's files, which app.js holds in memory -->
+        <form id="analysisForm" novalidate autocomplete="off">
 
           <!-- Validation errors -->
           <div id="errorAlert" class="alert alert-danger d-none" role="alert" aria-live="assertive" tabindex="-1">
@@ -210,22 +212,24 @@
 
                     <div class="col-12"><hr class="my-1"></div>
                     <div class="col-12 form-help mb-0">
-                      These are CLI options #13 and #16&ndash;#24, shown at their CLI defaults
-                      (#14 <code>full_sam</code> is always off here, #15 always SAM). Leave them
-                      alone unless you have a reason to change them.
+                      These are the CLI's optional arguments, named as in its usage text with
+                      their position in brackets, at their CLI defaults. The two left out are
+                      fixed here: <code>--full_sam</code> [#14] is always off and
+                      <code>--out_fmt</code> [#15] always SAM, so the numbers skip from #13 to #16.
+                      Leave them alone unless you have a reason to change them.
                     </div>
 
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="largeDelLen">Large deletion minimum length <span class="sub">(bp)</span></label>
                       <input type="number" id="largeDelLen" class="form-control form-control-sm" value="50" min="1">
-                      <div class="form-help">#22 <code>large_del_len</code>. A deletion this long or longer inside
+                      <div class="form-help"><code>--large_del_len</code> [#22]. A deletion this long or longer inside
                         one read is a large deletion; shorter ones are small indels. Default 50; use 100 for the
                         paper's large-deletion definition.</div>
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="distCut">Cleavage-site tolerance <span class="sub">(bp)</span></label>
                       <input type="number" id="distCut" class="form-control form-control-sm" value="8000" min="1">
-                      <div class="form-help">#13 <code>dist_cut</code>. How far a large deletion's read ends may be from
+                      <div class="form-help"><code>--dist_cut</code> [#13]. How far a large deletion's read ends may be from
                         the cut, which caps the deletion size that can be called. Default 8000; at 1000 most
                         deletions over 3 kb are lost. Small indels are not affected.</div>
                     </div>
@@ -235,7 +239,7 @@
                         <option value="local" selected>Pair-based (default)</option>
                         <option value="kmeans">k-means (the paper's method)</option>
                       </select>
-                      <div class="form-help">#24 <code>common_mode</code>. Pair-based: a treated deletion is common
+                      <div class="form-help"><code>--common_mode</code> [#24]. Pair-based: a treated deletion is common
                         (an artefact) when at least 4 control pairs have both breakpoints within max(20 bp, 2% of
                         its length) and their frequency is at least half the treated one; the result does not
                         depend on read order. k-means compares cluster centres and can vary between runs for
@@ -244,36 +248,36 @@
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="minGap">Minimum mate gap <span class="sub">(bp)</span></label>
                       <input type="number" id="minGap" class="form-control form-control-sm" value="400" min="1">
-                      <div class="form-help">#16 <code>min_gap</code>. Smallest gap between mates for a pair without a
+                      <div class="form-help"><code>--min_gap</code> [#16]. Smallest gap between mates for a pair without a
                         split read to count as a large deletion. An insert-size floor, not the 100 bp definition.</div>
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="anchorMin">Anchor quality floor</label>
                       <input type="number" id="anchorMin" class="form-control form-control-sm" value="13" min="0">
-                      <div class="form-help">#17 <code>anchor_min</code>. Lowest split-read anchor score (length &minus;
+                      <div class="form-help"><code>--anchor_min</code> [#17]. Lowest split-read anchor score (length &minus;
                         4&times;mismatches). 0 turns it off; 16 is strict.</div>
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label" for="insMax">Maximum insertion length <span class="sub">(0 = unlimited)</span></label>
                       <input type="number" id="insMax" class="form-control form-control-sm" value="0" min="0">
-                      <div class="form-help">#20 <code>ins_max</code>. Longest insertion still recorded as one.</div>
+                      <div class="form-help"><code>--ins_max</code> [#20]. Longest insertion still recorded as one.</div>
                     </div>
                     <div class="col-12 col-md-6 d-flex flex-column justify-content-end">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="cutBetween" checked>
-                        <label class="form-check-label" for="cutBetween">Cleavage site must fall between the mates <span class="sub">(#18)</span></label>
+                        <label class="form-check-label" for="cutBetween">Cleavage site must fall between the mates <span class="sub">(--cut_between [#18])</span></label>
                       </div>
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="insFix" checked>
-                        <label class="form-check-label" for="insFix">Insertion alignment fix <span class="sub">(#19 ins_fix)</span></label>
+                        <label class="form-check-label" for="insFix">Insertion alignment fix <span class="sub">(--ins_fix [#19])</span></label>
                       </div>
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="clipRescue" checked>
-                        <label class="form-check-label" for="clipRescue">Clip rescue <span class="sub">(#23 clip_rescue)</span></label>
+                        <label class="form-check-label" for="clipRescue">Clip rescue <span class="sub">(--clip_rescue [#23])</span></label>
                       </div>
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="report" checked>
-                        <label class="form-check-label" for="report">Generate the HTML report <span class="sub">(#21)</span></label>
+                        <label class="form-check-label" for="report">Generate the HTML report <span class="sub">(--report [#21])</span></label>
                       </div>
                       <div class="form-help">With <code>ins_fix</code> off, most insertions of 9 bp or more are lost.
                         Clip rescue re-calls a small indel within 13 bp of a read end, seen only as a soft clip,
@@ -287,7 +291,7 @@
           </div>
 
           <!-- Example and submit buttons -->
-          <div class="d-flex align-items-center gap-2">
+          <div class="d-flex align-items-center flex-wrap gap-2">
             <button class="btn btn-primary btn-sm ex" type="button"
                     data-gene="HPRT1" data-sample="SIM"
                     data-target="AGCCCCCCTTGAGCACACAG">
@@ -299,7 +303,11 @@
             </button>
             <span class="form-help">simulated &middot; 40k pairs/sample &middot; 11&nbsp;MB</span>
             <span class="form-help" id="demo-note"></span>
-            <button class="btn btn-primary btn-sm ms-auto" type="button" id="submit">
+            <button class="btn btn-outline-secondary btn-sm ms-auto" type="button" id="reset-inputs"
+                    title="Clear every input and put the options back to their defaults">
+              <i class="bi bi-arrow-counterclockwise"></i> Reset
+            </button>
+            <button class="btn btn-primary btn-sm" type="button" id="submit">
               <i class="bi bi-play-fill"></i> Submit
             </button>
           </div>

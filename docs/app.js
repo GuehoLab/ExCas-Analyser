@@ -794,11 +794,16 @@
 
   // ---- example buttons ----
 
+  // Bumped by resetInputs(), so an example still loading when the form is reset is dropped
+  // instead of filling the form afterwards.
+  var exampleToken = 0;
+
   // Loads the example into the form, ready to submit. It does not start the run.
   function runAction(gene, sample, target) {
     gene   = gene   || EXAMPLE.gene;
     sample = sample || EXAMPLE.sample;
     target = target || EXAMPLE.target;
+    var token = exampleToken;
 
     clearError();
     if (demoNote) demoNote.textContent = 'Loading example data…';
@@ -808,6 +813,7 @@
       return new Promise(function (resolve, reject) {
         var reader = new FileReader();
         reader.onload = function () {
+          if (token !== exampleToken) { resolve(null); return; }   // reset meanwhile
           var seq = parseFasta(reader.result);
           console.log('[app.js] example reference length:', seq.length);
 
@@ -837,6 +843,7 @@
         reader.readAsText(loaded.ref);
       });
     }).catch(function (err) {
+      if (token !== exampleToken) return null;   // reset meanwhile
       showError('Failed to load example data: ' + err.message);
       if (demoNote) demoNote.textContent = '';
       if (submitBtn) submitBtn.disabled = false;
@@ -886,6 +893,29 @@
       downloadAction(btn.dataset.gene).catch(function () {});
     });
   });
+
+  // ---- reset ----
+  // Puts the input page back as it first loads: every field and option at its default,
+  // one treated-sample row, no files, no example. Runs on every page load too, so a
+  // refresh starts from an empty form rather than one the browser half put back.
+  function resetInputs() {
+    exampleToken++;
+    removeAddedRows();
+    var form = document.getElementById('analysisForm');
+    if (form) form.reset();
+    Array.prototype.forEach.call(document.querySelectorAll('#analysisForm .file-name'),
+                                 function (el) { el.textContent = ''; });
+    _exampleFiles = null;
+    refSequence = '';
+    if (refLenSpan) refLenSpan.textContent = '';
+    if (demoNote) demoNote.textContent = '';
+    if (submitBtn) submitBtn.disabled = false;
+    clearError();
+  }
+
+  var resetBtn = document.getElementById('reset-inputs');
+  if (resetBtn) resetBtn.addEventListener('click', resetInputs);
+  resetInputs();
 
   // ---- submit: validate and start the analysis ----
   // Starts a run. Returns false if the inputs failed validation. Also exposed as
@@ -2528,7 +2558,7 @@
     renderPies(pat);                                                // Figure 2
     renderRescueNote(result.metrics, params);                       // under Figure 2
     updateNucleotide(outputs, prefix, params, refSequence, pat);    // Figures 3–6
-    renderDownloads(downloadFiles(outputs, prefix, pat), prefix);   // result files
+    renderDownloads(batchRuns);                                     // result files
     renderViewer(outputs, prefix, params, result.refLen);           // Figure 7
   }
 
@@ -2556,13 +2586,9 @@
   }
 
   // ---- result file downloads ----
-
-  var outputUrls = [];
-
-  function releaseOutputUrls() {
-    outputUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (_) {} });
-    outputUrls = [];
-  }
+  // One zip per finished sample, <gene>_<sample>.zip, holding that sample's result files
+  // (and its summary without TermIns when they are left out). Download all saves every
+  // sample's zip; Individual files lists them. A zip is built when it is saved.
 
   function fmtBytes(n) {
     if (n < 1024) return n + ' B';
@@ -2570,12 +2596,10 @@
     return (n / 1024 / 1024).toFixed(1) + ' MB';
   }
 
-  // Saves a blob as a file through a temporary link. Used for the results zip and the
-  // example download. The URL is revoked by releaseOutputUrls() when the next results are
-  // rendered.
+  // Saves a blob as a file through a temporary link. Used for the result zips and the
+  // example download. The URL is revoked a minute later, once the download has started.
   function saveBlob(blob, filename) {
     var url = URL.createObjectURL(blob);
-    outputUrls.push(url);
     var a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -2583,9 +2607,38 @@
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
   }
 
-  function renderDownloads(outputs, prefix) {
+  // A finished run's zip: { name, prefix, files: { name: output }, count, bytes }, bytes
+  // being the files' size before compression.
+  function sampleZip(run) {
+    var prefix = run.params.gene + '_' + run.params.sample;
+    var outs = downloadFiles(run.result.outputs || {}, prefix, runPattern(run));
+    var z = { name: prefix + '.zip', prefix: prefix, files: {}, count: 0, bytes: 0 };
+    Object.keys(outs).sort().forEach(function (n) {
+      if (!(outs[n].size > 0)) return;
+      z.files[n] = outs[n]; z.count++; z.bytes += outs[n].size;
+    });
+    return z;
+  }
+
+  // zipSync comes from the vendored fflate bundle, the same one used for gunzip.
+  function saveSampleZip(z) {
+    if (typeof fflate === 'undefined' || !fflate.zipSync) {
+      showError('Zip support is unavailable, so the result files cannot be downloaded.');
+      return;
+    }
+    var data = {};
+    Object.keys(z.files).forEach(function (n) { data[n] = fflate.strToU8(z.files[n].text); });
+    try {
+      saveBlob(new Blob([fflate.zipSync(data, { level: 6 })], { type: 'application/zip' }), z.name);
+    } catch (e) {
+      showError('Could not build ' + z.name + ': ' + (e.message || e));
+    }
+  }
+
+  function renderDownloads(runs) {
     var box    = document.getElementById('download-box');
     var list   = document.getElementById('dl-list');
     var note   = document.getElementById('dl-note');
@@ -2593,40 +2646,33 @@
     var toggle = document.getElementById('dl-toggle');
     if (!list || !box) return;
 
-    releaseOutputUrls();
     list.innerHTML = '';
     list.classList.add('d-none');
     if (toggle) toggle.setAttribute('aria-expanded', 'false');
 
-    var names = Object.keys(outputs).filter(function (n) { return outputs[n].size > 0; }).sort();
-    if (!names.length) { box.classList.add('d-none'); return; }
+    var zips = runs.filter(function (r) { return r.result; }).map(sampleZip)
+                   .filter(function (z) { return z.count > 0; });
+    if (!zips.length) { box.classList.add('d-none'); return; }
     box.classList.remove('d-none');
 
-    var total = 0;
-    names.forEach(function (n) {
-      total += outputs[n].size;
-      var type = /\.html$/.test(n) ? 'text/html'
-               : /\.tsv$/.test(n)  ? 'text/tab-separated-values'
-               : 'text/plain';
-      var url = URL.createObjectURL(new Blob([outputs[n].text], { type: type }));
-      outputUrls.push(url);
-
-      var a = document.createElement('a');
-      a.className = 'btn btn-outline-secondary btn-sm';
-      a.href = url;
-      a.download = n;
-      a.textContent = n;
+    zips.forEach(function (z) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-outline-secondary btn-sm';
+      b.textContent = z.name;
       var span = document.createElement('span');
       span.className = 'text-secondary ms-1';
-      span.textContent = '(' + fmtBytes(outputs[n].size) + ')';
-      a.appendChild(span);
-      list.appendChild(a);
+      span.textContent = '(' + z.count + ' files, ' + fmtBytes(z.bytes) + ')';
+      b.appendChild(span);
+      b.addEventListener('click', function () { saveSampleZip(z); });
+      list.appendChild(b);
     });
 
     if (note) {
-      note.textContent = names.length + ' files, ' + fmtBytes(total) +
-        '. SAM files open in IGV as they are; ' + prefix +
-        '_report.html is a standalone report.';
+      note.textContent = (zips.length > 1 ? zips.length + ' zips, one per sample. ' : '') +
+        'Sizes are before compression. SAM files open in IGV as they are; ' +
+        (zips.length > 1 ? 'each sample\'s _report.html' : zips[0].prefix + '_report.html') +
+        ' is a standalone report.';
     }
 
     if (toggle) {
@@ -2636,23 +2682,10 @@
       };
     }
 
-    // zipSync comes from the vendored fflate bundle, the same one used for gunzip.
+    // one zip after another: browsers can drop downloads started in the same instant
     if (allBtn) {
       allBtn.onclick = function () {
-        if (typeof fflate === 'undefined' || !fflate.zipSync) {
-          // no zip available: open the list of individual files instead
-          list.classList.remove('d-none');
-          if (note) note.textContent = 'Zip support is unavailable; download the files individually.';
-          return;
-        }
-        var files = {};
-        names.forEach(function (n) { files[n] = fflate.strToU8(outputs[n].text); });
-        try {
-          var zipped = fflate.zipSync(files, { level: 6 });
-          saveBlob(new Blob([zipped], { type: 'application/zip' }), prefix + '_results.zip');
-        } catch (e) {
-          showError('Could not build the zip: ' + (e.message || e));
-        }
+        zips.forEach(function (z, i) { setTimeout(function () { saveSampleZip(z); }, i * 400); });
       };
     }
   }
