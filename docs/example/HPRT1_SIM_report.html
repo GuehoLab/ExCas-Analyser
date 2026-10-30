@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HPRT1_SIM — kmer_align</title>
+<style>
+*{box-sizing:border-box}
+:root{
+ color-scheme:light;
+ --bg:#f7f7f5; --surface:#fcfcfb; --rule:#e6e5e0; --rule-2:#d2d1ca;
+ --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#85847e;
+ --ins:#2a78d6; --del:#eb6834; --clip:#1baf7a; --sub:#eda100; --ldel:#e87ba4; --wt:#b9b8b1;
+ --accent:#2a78d6;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ color-scheme:dark;
+ --bg:#111110; --surface:#1a1a19; --rule:#2e2e2b; --rule-2:#44443f;
+ --ink:#fff; --ink-2:#c3c2b7; --ink-3:#8f8e86;
+ --ins:#3987e5; --del:#d95926; --clip:#199e70; --sub:#c98500; --ldel:#d55181; --wt:#5a5a55;
+ --accent:#3987e5;
+}}
+:root[data-theme="dark"]{
+ color-scheme:dark;
+ --bg:#111110; --surface:#1a1a19; --rule:#2e2e2b; --rule-2:#44443f;
+ --ink:#fff; --ink-2:#c3c2b7; --ink-3:#8f8e86;
+ --ins:#3987e5; --del:#d95926; --clip:#199e70; --sub:#c98500; --ldel:#d55181; --wt:#5a5a55;
+ --accent:#3987e5;
+}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:40px 16px 80px}
+header{border-bottom:1px solid var(--rule-2);padding-bottom:22px;margin-bottom:8px}
+h1{font-size:27px;line-height:1.25;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--ink-2);margin:0;font-size:14.5px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:14px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-3)}
+.meta b{color:var(--ink-2);font-weight:500}
+section{background:var(--surface);border:1px solid var(--rule);border-radius:14px;
+ padding:24px 22px;margin-top:22px}
+h2{font-size:18.5px;margin:0 0 4px;letter-spacing:-.005em}
+.note{color:var(--ink-2);font-size:13.5px;margin:6px 0 0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px}
+.tile{border:1px solid var(--rule);border-radius:10px;padding:13px 14px;background:var(--bg)}
+.tile .k{display:block;font-size:11.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.tile .v{display:block;font:600 22px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:5px}
+.tile .n{display:block;font-size:12px;color:var(--ink-3);margin-top:3px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:14px 0 4px;font-size:13px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
+.chart{position:relative;margin-top:14px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.tip{position:absolute;pointer-events:none;opacity:0;transition:opacity .09s;
+ background:var(--surface);border:1px solid var(--rule-2);border-radius:9px;padding:9px 11px;
+ font-size:12.5px;box-shadow:0 6px 22px rgba(0,0,0,.14);min-width:130px;z-index:5;color:var(--ink)}
+.tip b{font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace}
+.tip .r{display:flex;justify-content:space-between;gap:14px;margin-top:4px;color:var(--ink-2)}
+.tabs{display:flex;gap:6px;margin-top:16px;flex-wrap:wrap}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:99px;cursor:pointer;
+ border:1px solid var(--rule-2);background:transparent;color:var(--ink-2)}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:14px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--rule)}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);font-weight:600}
+td.n,th.n{text-align:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.seq{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.flag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;
+ background:color-mix(in srgb,var(--del) 16%,transparent);color:var(--del);font-weight:600}
+.ok{background:color-mix(in srgb,var(--clip) 16%,transparent);color:var(--clip)}
+.thin{background:color-mix(in srgb,var(--ink-3) 14%,transparent);color:var(--ink-2)}
+.tblwrap{overflow-x:auto}
+details{margin-top:14px}
+summary{cursor:pointer;color:var(--ink-2);font-size:13.5px}
+.warn{border-left:3px solid var(--sub);padding:10px 0 10px 14px;margin-top:16px;
+ color:var(--ink-2);font-size:13.5px;background:color-mix(in srgb,var(--sub) 7%,transparent);
+ border-radius:0 8px 8px 0}
+footer{margin-top:34px;color:var(--ink-3);font-size:12.5px;text-align:center}
+@media(max-width:640px){.wrap{padding:26px 16px 60px}h1{font-size:22px}}
+</style></head>
+<body><div class="wrap" id="app"></div>
+<script>const R={"title":"HPRT1_SIM — kmer_align","date":"2026-10-30","version":"2026.09","samples":[{"name":"HPRT1_SIM","label":"SIM","params":{"gene":"HPRT1","sample":"SIM","ref":"/work/reference.fa","ref_len":"9411","targetst":"4652","targeted":"4671","cle":"3","cut":"4655","K":"11","dist_cut":"8000","min_gap":"400","anchor_min":"13","cut_between":"1","ins_fix":"1","ins_max":"0","large_del_len":"50","ctr_1":"/work/ctr_1.fastq","ctr_2":"/work/ctr_2.fastq","mut_1":"/work/mut_1.fastq","mut_2":"/work/mut_2.fastq"},"control":{"aligned_pairs_all_positions":38318,"large_deletion":84,"large_deletion_common_excluded":224,"not_covered_excluded":280,"small_deletion":3,"small_insertion":2,"substitution":37,"terminal_insertion_clipped":2,"total_analyzed":1037,"wt":909},"treated":{"aligned_pairs_all_positions":38172,"large_deletion":488,"large_deletion_common_excluded":235,"not_covered_excluded":171,"small_deletion":231,"small_insertion":209,"substitution":8,"terminal_insertion_clipped":54,"total_analyzed":1168,"wt":178},"mut_ins":{"1":59,"2":45,"3":44,"4":1,"5":38,"6":2,"10":35,"100":4},"mut_del":{"1":81,"2":43,"3":51,"5":42,"10":39},"ctr_ins":{"1":3},"ctr_del":{"1":4},"ldel":{"1":2,"100":53,"500":43,"1000":55,"2000":31,"2179":1,"2180":3,"2641":1,"2687":1,"2794":1,"2999":1,"3000":49,"4171":3,"4226":1,"4486":1,"4786":2,"4952":3,"5000":38,"5420":3,"5704":2,"5753":1,"6381":1,"6695":4,"6703":6,"7000":62,"7018":1,"7300":1,"7630":1,"7631":18,"7912":1,"7968":3,"7969":1},"ldel_ctr":{"2687":6,"3301":1,"4171":5,"4173":2,"4388":1,"4389":2,"4485":2,"4486":3,"4487":1,"4766":1,"5090":1,"5091":1,"5107":1,"5420":2,"5422":4,"6380":1,"6381":1,"6695":6,"6703":9,"7299":1,"7631":8,"7968":4,"8279":2},"seqs":[["CTCAGAAGAC",2],["GGTGTAGTTG",2],["TGATGGGGTG",2],["TTGGGTCGCT",2],["AATACGCTGT",1],["AATAGGGTGC",1],["AATTAGAACCTATAGCCCTTAACGCTAGAGGAGCTACGGTGTGGGGCGTGGCTATGCGAATGATCCGAGCGCTACCGAGGCGATGTCCGGGTAAAAAATG",1],["AATTCTTGTG",1],["ACCACTGAAG",1],["ACTATGCCTG",1],["ACTTTGCAAT",1],["AGAAGGGCTG",1],["ATCCGCGGGC",1],["CAGGGAGGTG",1],["CATAGTAACC",1],["CCAGGTTGCT",1],["CCGGGCCTGC",1],["CGAACCTACT",1],["CGAATACGTG",1],["CGACGGGCGT",1],["CTCGTCTCCC",1],["CTTCAGCTAT",1],["GAGTTAGTCG",1],["GATTCGATGC",1],["GCACTTGTCG",1],["GCATCAATTG",1],["GCGTGAGTGC",1],["GGCCTAGGTG",1],["GGTGCGTCCC",1],["GTGTTGTTCCTCGATACTCGATCAGGAGCCGATCTTGCTGACCGTTAATTCCGGCGAGCTACGTACAAAGCCAGCTGAATCCGATGTCGGTGTTGCTTGC",1],["TCGCCCGAGT",1],["TCGTCAAAGGTGCGCTACATTGTGGCCTCTCAGCATCCGTAAAGGGTCTCGGACCACATTACTTATAGTAACGGATACCCTCCCCTCAACTTACAGCATG",1],["TGAGAGAATCGACCCTGCACAAGAAGTAGCCCCTTAGTGTCGGGCTGCTTCTATAGGGATGCATACATAGGCTGCCTCTGATCTCTGCTCTTAGTATCGT",1],["TTGCCGCAAT",1],["TTTTGAAGCT",1]],"scan":{"ctr_reads":80230,"mut_reads":80230,"ctr":{"AATACGCTGT":0,"AATAGGGTGC":0,"AATTAGAACCTATAGCCCTTAACGCTAGAGGAGCTACGGTGTGGGGCGTGGCTATGCGAATGATCCGAGCGCTACCGAGGCGATGTCCGGGTAAAAAATG":0,"AATTCTTGTG":4,"ACCACTGAAG":0,"ACTATGCCTG":4,"ACTTTGCAAT":0,"AGAAGGGCTG":0,"ATCCGCGGGC":0,"CAGGGAGGTG":3,"CATAGTAACC":0,"CCAGGTTGCT":1,"CCGGGCCTGC":0,"CGAACCTACT":0,"CGAATACGTG":0,"CGACGGGCGT":0,"CTCAGAAGAC":0,"CTCGTCTCCC":0,"CTTCAGCTAT":0,"GAGTTAGTCG":0,"GATTCGATGC":0,"GGTGTAGTTG":0,"TGATGGGGTG":0,"TTGGGTCGCT":1},"mut":{"AATACGCTGT":1,"AATAGGGTGC":1,"AATTAGAACCTATAGCCCTTAACGCTAGAGGAGCTACGGTGTGGGGCGTGGCTATGCGAATGATCCGAGCGCTACCGAGGCGATGTCCGGGTAAAAAATG":1,"AATTCTTGTG":4,"ACCACTGAAG":1,"ACTATGCCTG":6,"ACTTTGCAAT":1,"AGAAGGGCTG":1,"ATCCGCGGGC":1,"CAGGGAGGTG":11,"CATAGTAACC":1,"CCAGGTTGCT":3,"CCGGGCCTGC":2,"CGAACCTACT":1,"CGAATACGTG":2,"CGACGGGCGT":1,"CTCAGAAGAC":2,"CTCGTCTCCC":1,"CTTCAGCTAT":1,"GAGTTAGTCG":3,"GATTCGATGC":1,"GGTGTAGTTG":2,"TGATGGGGTG":2,"TTGGGTCGCT":4}}}],"compare":[]};</script>
+<script>"use strict";
+const F=n=>Number(n||0).toLocaleString();
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const esc=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const CAT=[["wt","Wild type","--wt"],["small_insertion","Small insertion","--ins"],["small_deletion","Small deletion","--del"],
+           ["terminal_insertion_clipped","Terminal insertion","--clip"],["substitution","Substitution","--sub"],["large_deletion","Large deletion","--ldel"]];
+const STACK=["small_insertion","small_deletion","terminal_insertion_clipped","substitution","large_deletion","wt"];
+function sumMaps(list,key){const o={};for(const s of list){const m=s[key]||{};for(const k in m){o[k]=(o[k]||0)+m[k];}}return o;}
+function pct(s){const t=(s.treated||{}).total_analyzed||0,o={};for(const [k] of CAT){o[k]=t?100*((s.treated||{})[k]||0)/t:0;}return o;}
+const baseOf=l=>String(l).replace(/[_-](ON|OFF|on|off)$/,"");
+function svg(w,h,inner,label){return `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${label}">${inner}</svg>`;}
+function hookTip(box,tip,hit){
+  const s=box.querySelector("svg");
+  s.addEventListener("pointermove",e=>{
+    const r=s.getBoundingClientRect();
+    const res=hit((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height);
+    if(!res){tip.style.opacity=0;return;}
+    tip.innerHTML=res.html;tip.style.opacity=1;
+    const bx=box.getBoundingClientRect();
+    let x=(e.clientX-bx.left)+14,y=(e.clientY-bx.top)-10;
+    x=Math.min(Math.max(x,4),bx.width-tip.offsetWidth-4);
+    y=Math.min(Math.max(y,4),bx.height-tip.offsetHeight-4);
+    tip.style.left=x+"px";tip.style.top=y+"px";
+  });
+  s.addEventListener("pointerleave",()=>tip.style.opacity=0);
+}
+function yAxis(max,logY,py,L,W,R){
+  let g="";
+  for(let i=0;i<=4;i++){
+    const v=logY?Math.round(Math.pow(10,i*Math.log10(max+1)/4)-1):max*i/4;
+    g+=`<line x1="${L}" y1="${py(v)}" x2="${W-R}" y2="${py(v)}" stroke="${css('--rule')}"/>`;
+    g+=`<text x="${L-8}" y="${py(v)+4}" text-anchor="end" font-size="11.5" fill="${css('--ink-3')}" font-family="ui-monospace,monospace">${F(Math.round(v))}</text>`;
+  }
+  return g;
+}
+
+/* ---------- indel size spectrum ---------- */
+function spectrum(box,tip,data,lo,hi,logY){
+  box.querySelectorAll("svg").forEach(e=>e.remove());
+  const W=1000,H=300,L=58,R=16,T=18,B=52;
+  const bins=[];for(let k=lo;k<=hi;k++){if(k!==0)bins.push(k);}
+  const val=k=>k<0?(data.del[-k]||0):(data.ins[k]||0);
+  const max=Math.max(1,...bins.map(val));
+  const sc=v=>logY?Math.log10(v+1)/Math.log10(max+1):v/max;
+  const bw=(W-L-R)/bins.length,py=v=>T+(1-sc(v))*(H-T-B);
+  let g=yAxis(max,logY,py,L,W,R),bars="";
+  bins.forEach((k,i)=>{const v=val(k);if(v<=0)return;const x=L+i*bw,y=py(v);
+    bars+=`<rect x="${(x+0.6).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(bw-1.2,0.8).toFixed(1)}" height="${Math.max(py(0)-y,1).toFixed(1)}" rx="${Math.min(2,bw/3).toFixed(1)}" fill="${css(k<0?'--del':'--ins')}"/>`;});
+  const step=bins.length>40?10:(bins.length>16?5:1);
+  bins.forEach((k,i)=>{if(Math.abs(k)%step)return;
+    g+=`<text x="${(L+i*bw+bw/2).toFixed(1)}" y="${H-B+17}" text-anchor="middle" font-size="11" fill="${css('--ink-3')}" font-family="ui-monospace,monospace">${k>0?'+':''}${k}</text>`;});
+  const zi=bins.findIndex(k=>k>0),zx=L+(zi<0?bins.length:zi)*bw;
+  g+=`<line x1="${zx}" y1="${T}" x2="${zx}" y2="${H-B}" stroke="${css('--rule-2')}" stroke-dasharray="3 3"/>`;
+  g+=`<text x="${(L+zx)/2}" y="${H-B+36}" text-anchor="middle" font-size="12" fill="${css('--del')}">← Deletion (bp)</text>`;
+  g+=`<text x="${(zx+W-R)/2}" y="${H-B+36}" text-anchor="middle" font-size="12" fill="${css('--ins')}">Insertion (bp) →</text>`;
+  box.insertAdjacentHTML("afterbegin",svg(W,H,g+bars,"Indel size spectrum"));
+  hookTip(box,tip,fx=>{const i=Math.floor((fx*W-L)/bw);if(i<0||i>=bins.length)return null;
+    const k=bins[i],v=val(k);if(!v)return null;
+    return {html:`<b>${k>0?'+':''}${k} bp ${k<0?'deletion':'insertion'}</b><div class="r"><span>read</span><b>${F(v)}</b></div>`};});
+}
+
+/* ---------- stacked class bars ---------- */
+function stacks(box,tip,rows){
+  const W=1000,rh=34,L=110,R=56,T=8,H=T+rows.length*rh+18;
+  const tok=Object.fromEntries(CAT.map(([k,,t])=>[k,t])),lab=Object.fromEntries(CAT.map(([k,l])=>[k,l]));
+  let g="";
+  rows.forEach((r,i)=>{const y=T+i*rh+5,bh=rh-14;let acc=0;
+    STACK.forEach(k=>{const p=r.pct[k]||0;if(p<=0)return;const x=L+(W-L-R)*acc/100,w=(W-L-R)*p/100;
+      g+=`<rect x="${x.toFixed(1)}" y="${y}" width="${Math.max(w-2,0.8).toFixed(1)}" height="${bh}" rx="3" fill="${css(tok[k])}"/>`;acc+=p;});
+    g+=`<text x="${L-10}" y="${y+bh/2+4}" text-anchor="end" font-size="12.5" fill="${css('--ink-2')}" font-family="ui-monospace,monospace">${esc(r.label)}</text>`;
+    g+=`<text x="${W-R+8}" y="${y+bh/2+4}" font-size="12" fill="${css('--ink-3')}" font-family="ui-monospace,monospace">${F(r.total)}</text>`;});
+  box.insertAdjacentHTML("afterbegin",svg(W,H,g,"Classes per sample"));
+  hookTip(box,tip,(fx,fy)=>{const i=Math.floor((fy*H-T)/rh);if(i<0||i>=rows.length)return null;const r=rows[i];
+    return {html:`<b>${esc(r.label)}</b>`+STACK.map(k=>`<div class="r"><span><i class="sw" style="background:${css(tok[k])}"></i> ${lab[k]}</span><b>${(r.pct[k]||0).toFixed(2)}%</b></div>`).join("")};});
+}
+
+/* ---------- binned bars (large deletion / insertion length) ---------- */
+function binned(box,tip,series,BINS,LAB,opt){
+  const W=1000,H=290,L=58,R=16,T=18,B=54;
+  const gw=(W-L-R)/BINS.length,n=series.length,bw=(gw-12)/n;
+  const agg=series.map(s=>BINS.map(([a,b])=>{let t=0;for(const k in s.data){const v=+k;if(v>=a&&v<=b)t+=s.data[k];}return t;}));
+  const max=Math.max(1,...agg.flat()),logY=!!opt.logY;
+  const sc=v=>logY?Math.log10(v+1)/Math.log10(max+1):v/max,py=v=>T+(1-sc(v))*(H-T-B);
+  let g=yAxis(max,logY,py,L,W,R),bars="";
+  BINS.forEach((b,bi)=>{series.forEach((s,si)=>{const v=agg[si][bi];if(!v)return;const x=L+bi*gw+6+si*bw,y=py(v);
+      bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(bw-2,1).toFixed(1)}" height="${(py(0)-y).toFixed(1)}" rx="3" fill="${css(s.tok)}"/>`;});
+    g+=`<text x="${(L+bi*gw+gw/2).toFixed(1)}" y="${H-B+17}" text-anchor="middle" font-size="11.5" fill="${css('--ink-3')}" font-family="ui-monospace,monospace">${LAB[bi]}</text>`;});
+  if(opt.mark!=null){const x=L+opt.mark*gw;
+    g+=`<line x1="${x}" y1="${T}" x2="${x}" y2="${H-B}" stroke="${css(opt.markTok||'--rule-2')}" stroke-dasharray="4 3"/>`;
+    g+=`<text x="${x+6}" y="${T+13}" font-size="11.5" fill="${css(opt.markTok||'--ink-2')}">${opt.markText}</text>`;}
+  g+=`<text x="${(L+W-R)/2}" y="${H-B+38}" text-anchor="middle" font-size="12" fill="${css('--ink-2')}">${opt.xlabel}</text>`;
+  box.insertAdjacentHTML("afterbegin",svg(W,H,g+bars,opt.xlabel));
+  hookTip(box,tip,fx=>{const bi=Math.floor((fx*W-L)/gw);if(bi<0||bi>=BINS.length)return null;
+    return {html:`<b>${LAB[bi]} bp</b>`+series.map((s,si)=>`<div class="r"><span><i class="sw" style="background:${css(s.tok)}"></i> ${s.label}</span><b>${F(agg[si][bi])}</b></div>`).join("")};});
+}
+
+/* ---------- page ---------- */
+function tile(k,v,n){return `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="n">${n}</span></div>`;}
+function legend(items){return `<div class="legend">`+items.map(([t,l])=>`<span><i class="sw" style="background:var(${t})"></i> ${l}</span>`).join("")+`</div>`;}
+
+function build(){
+  const S=R.samples,C=R.compare||[],p0=S[0].params||{};
+  const ins=sumMaps(S,"mut_ins"),del=sumMaps(S,"mut_del"),ld=sumMaps(S,"ldel"),ldc=sumMaps(S,"ldel_ctr");
+  const rows=S.map(s=>({label:s.label,total:(s.treated||{}).total_analyzed||0,pct:pct(s)}));
+  const totA=S.reduce((a,s)=>a+((s.treated||{}).aligned_pairs_all_positions||0),0);
+  const totN=rows.reduce((a,r)=>a+r.total,0);
+  const edited=rows.reduce((a,r)=>a+r.total*(100-r.pct.wt)/100,0);
+  const ik=Object.keys(ins).map(Number),maxI=ik.length?Math.max(...ik):0;
+  const big=ik.filter(k=>k>=8).reduce((a,k)=>a+ins[k],0);
+
+  /* insertion sequences of 8 bp and up: the raw-read scan, summed over the samples */
+  const calls={};S.forEach(s=>(s.seqs||[]).forEach(([q,n])=>calls[q]=(calls[q]||0)+n));
+  const top=Object.entries(calls).sort((a,b)=>b[1]-a[1]||(a[0]<b[0]?-1:1)).slice(0,12);
+  const anyScan=S.some(s=>s.scan);
+  let seqRows="";
+  for(const [q,n] of top){
+    let mh=0,mr=0,ch=0,cr=0,ns=0;
+    for(const s of S){const sc=s.scan;if(!sc||!(q in sc.mut))continue;ns++;
+      mh+=sc.mut[q];mr+=sc.mut_reads;ch+=sc.ctr[q]||0;cr+=sc.ctr_reads;}
+    if(ns){const mp=1e6*mh/Math.max(mr,1),cp=1e6*ch/Math.max(cr,1),art=cp>0&&cp>=0.5*mp,thin=!art&&mh<5;
+      /* fewer than 5 raw reads: no verdict either way */
+      const vt=art?'Also in the control · artefact':(thin?`Weak evidence · ${mh} raw read${mh===1?"":"s"}`:'Treated only'),vc=art?'':(thin?'thin':'ok');
+      seqRows+=`<tr><td class="n">${q.length}</td><td class="n">${F(n)}</td><td class="n">${F(Math.round(mp))}</td><td class="n">${F(Math.round(cp))}</td>`+
+        `<td><span class="flag ${vc}">${vt}</span>${S.length>1?` <span style="color:var(--ink-3);font-size:11.5px">${ns}/${S.length}</span>`:''}</td><td class="seq">${esc(q)}</td></tr>`;}
+    else seqRows+=`<tr><td class="n">${q.length}</td><td class="n">${F(n)}</td><td class="n">–</td><td class="n">–</td><td><span class="flag">Not checked</span></td><td class="seq">${esc(q)}</td></tr>`;
+  }
+  if(!seqRows)seqRows=`<tr><td colspan="6" style="color:var(--ink-3)">No insertions of 8 bp or more</td></tr>`;
+  let scanNote="";
+  if(anyScan){const mr=S.reduce((a,s)=>a+(s.scan?s.scan.mut_reads:0),0),cr=S.reduce((a,s)=>a+(s.scan?s.scan.ctr_reads:0),0);
+    scanNote=`Counted directly in ${F(mr)} treated and ${F(cr)} control raw reads, and compared per million reads.`;}
+  else scanNote=`The raw FASTQ files could not be read, so there is no verdict.`;
+
+  const meta=[["gene",p0.gene],["targetst",p0.targetst],["cle",p0.cle],["cut",p0.cut],["K",p0.K],["dist_cut",p0.dist_cut],
+              ["anchor_min",p0.anchor_min],["cut_between",p0.cut_between],["ins_fix",p0.ins_fix],["ins_max",p0.ins_max],["ref",p0.ref_len?p0.ref_len+" bp":undefined]]
+    .filter(([,v])=>v!==undefined&&v!=="").map(([k,v])=>`<span><b>${k}</b> ${esc(v)}</span>`).join(" ");
+
+  const clsRows=rows.map(r=>`<tr><td>${esc(r.label)}</td>`+CAT.map(([k])=>`<td class="n">${r.pct[k].toFixed(2)}%</td>`).join("")+`<td class="n">${F(r.total)}</td></tr>`).join("");
+
+  let compHTML="";
+  if(C.length){
+    const cins=sumMaps(C,"mut_ins"),ck=Object.keys(cins).map(Number);
+    const bigB=ck.filter(k=>k>=8).reduce((a,k)=>a+cins[k],0),mxB=ck.length?Math.max(...ck):0;
+    const byBase={};C.forEach((s,i)=>byBase[baseOf(s.label)]=s);
+    const trs=S.map((s,i)=>{const o=byBase[baseOf(s.label)]||(C.length===S.length?C[i]:null);if(!o)return "";
+      const a=pct(o),b=pct(s);
+      return `<tr><td>${esc(baseOf(s.label))}</td>`+CAT.map(([k])=>`<td class="n">${a[k].toFixed(2)} → ${b[k].toFixed(2)}</td>`).join("")+`</tr>`;}).join("");
+    compHTML=`<section><h2>Insertion alignment fix, before and after</h2>
+      <p class="note">The same data run with <code>ins_fix=0</code> and with <code>ins_fix=1</code>.</p>
+      <div class="tiles">${tile("Longest insertion",`${mxB} → ${maxI} bp`,"I in the CIGAR")}${tile("Insertions of 8 bp+",`${F(bigB)} → ${F(big)}`,"reads")}</div>
+      ${legend([["--wt","Before the fix"],["--ins","After the fix"]])}
+      <div class="chart" id="b-ins"><div class="tip" id="t-ins"></div></div>
+      <details open><summary>Class shares, before → after (%)</summary><div class="tblwrap"><table>
+      <thead><tr><th>Sample</th>${CAT.map(([,l])=>`<th class="n">${l}</th>`).join("")}</tr></thead><tbody>${trs}</tbody></table></div></details></section>`;
+    R._cins=cins;
+  }
+
+  document.getElementById("app").innerHTML=`
+  <header><h1>${esc(R.title)}</h1>
+    <p class="sub">kmer_align ${esc(R.version)} · ${S.length} sample${S.length>1?"s":""} · generated ${esc(R.date)}</p>
+    <div class="meta">${meta}</div></header>
+  <section><h2>Summary</h2><div class="tiles">
+    ${tile("Aligned pairs",F(totA),"all positions")}${tile("Classified",F(totN),"pairs spanning the cut site")}
+    ${tile("Edited",(100*edited/Math.max(totN,1)).toFixed(1)+"%","not wild type")}
+    ${tile("Longest insertion",maxI+" bp","I in the CIGAR")}${tile("Insertions of 8 bp+",F(big),"reads")}</div></section>
+  <section><h2>Indel size spectrum</h2>
+    <p class="note">Indels within ±13 bp of the cut site, counted by length: deletions on the left, insertions on the right.</p>
+    ${legend([["--del","Deletion"],["--ins","Insertion"]])}
+    <div class="chart" id="b-spec"><div class="tip" id="t-spec"></div></div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-lo="-30" data-hi="30">±30 bp</button>
+      <button role="tab" aria-selected="false" data-lo="-10" data-hi="10">±10 bp</button>
+      <button role="tab" aria-selected="false" data-lo="-49" data-hi="100">All</button>
+      <button id="logbtn" aria-pressed="false" style="margin-left:10px">Log y-axis</button></div></section>
+  <section><h2>${S.length>1?"Classes per sample":"Classes"}</h2>
+    ${legend(STACK.map(k=>[CAT.find(c=>c[0]===k)[2],CAT.find(c=>c[0]===k)[1]]))}
+    <div class="chart" id="b-stack"><div class="tip" id="t-stack"></div></div>
+    <details><summary>Show as a table</summary><div class="tblwrap"><table>
+      <thead><tr><th>Sample</th>${CAT.map(([,l])=>`<th class="n">${l}</th>`).join("")}<th class="n">Total</th></tr></thead><tbody>${clsRows}</tbody></table></div></details></section>
+  <section><h2>Large deletion sizes</h2>
+    <p class="note">Deletion lengths from the split reads' CIGARs, with the control alongside to show the artefact level.</p>
+    ${legend([["--ldel","Treated"],["--wt","Control"]])}
+    <div class="chart" id="b-ldel"><div class="tip" id="t-ldel"></div></div>
+    <div class="warn"><b>Take care above 2 kb.</b> The only/common split there is sensitive to the input and does not reproduce from a single run.
+      It moves by up to 30 pp when 1% of the input changes. When you report this range, give its spread across replicates.</div></section>
+  <section><h2>Insertion sequences of 8 bp and up</h2>
+    <p class="note">A sequence seen about as often in the control is co-amplified background, not a CRISPR product.
+      The pipeline's only/common control filter applies <b>to large deletions only</b>, not to insertions, so they are checked here.</p>
+    <p class="note">${scanNote}</p>
+    <div class="tblwrap"><table><thead><tr><th class="n">Length</th><th class="n">Insertion calls</th><th class="n">Treated raw /M</th><th class="n">Control raw /M</th><th>Verdict</th><th>Sequence</th></tr></thead>
+      <tbody>${seqRows}</tbody></table></div></section>
+  ${compHTML}
+  <footer>kmer_align · CRISPR-LargeDel</footer>`;
+
+  stacks(document.getElementById("b-stack"),document.getElementById("t-stack"),rows);
+  const LDB=[[50,99],[100,249],[250,499],[500,999],[1000,1999],[2000,3999],[4000,1e12]];
+  binned(document.getElementById("b-ldel"),document.getElementById("t-ldel"),
+    [{label:"Treated",tok:"--ldel",data:ld},{label:"Control",tok:"--wt",data:ldc}],LDB,
+    ["50–99","100–249","250–499","500–999","1k–2k","2k–4k","4k+"],
+    {mark:5,markTok:"--sub",markText:"2 kb and up: check reproducibility",xlabel:"Deletion length (bp)"});
+  if(C.length){
+    binned(document.getElementById("b-ins"),document.getElementById("t-ins"),
+      [{label:"Before the fix",tok:"--wt",data:R._cins},{label:"After the fix",tok:"--ins",data:ins}],
+      [[1,1],[2,3],[4,7],[8,15],[16,30],[31,60],[61,1e12]],["1","2–3","4–7","8–15","16–30","31–60","61+"],
+      {logY:true,mark:3,markText:"← lengths the unfixed alignment could not give",xlabel:"Insertion length (bp) · log y-axis"});
+  }
+  const sb=document.getElementById("b-spec"),st=document.getElementById("t-spec"),data={ins:ins,del:del};
+  let RANGE=[-30,30],LOGY=false;const draw=()=>spectrum(sb,st,data,RANGE[0],RANGE[1],LOGY);draw();
+  document.querySelectorAll('.tabs button[data-lo]').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.tabs button[data-lo]').forEach(x=>x.setAttribute('aria-selected','false'));
+    b.setAttribute('aria-selected','true');RANGE=[+b.dataset.lo,+b.dataset.hi];draw();}));
+  const lb=document.getElementById('logbtn');
+  lb.addEventListener('click',()=>{LOGY=!LOGY;lb.setAttribute('aria-pressed',LOGY);lb.setAttribute('aria-selected',LOGY);draw();});
+}
+build();
+</script>
+</body></html>

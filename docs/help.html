@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- No phone layout, as on index.html -->
+  <meta name="viewport" content="width=1024">
+  <title>Help — ExCas-Analyzer</title>
+  <meta name="description" content="How to run ExCas-Analyzer, a worked example with sample output, how to interpret the results, and the licences.">
+  <!-- Inline, so the browser does not request a /favicon.ico that is not there. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d6efd'/%3E%3Cpath d='M6 11h20M6 21h20' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M16 5v22' stroke='%23fff' stroke-width='2' stroke-dasharray='3 2.5'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <!-- ?v= is raised when style.css changes, so a browser does not keep using an older copy -->
+  <link rel="stylesheet" href="style.css?v=20261030">
+</head>
+<body>
+
+<!-- Navbar, as on index.html -->
+<nav class="navbar bg-white border-bottom sticky-top">
+  <div class="container container-narrow">
+    <a class="navbar-brand d-flex align-items-center gap-2" href="index.html">
+      <span>ExCas-Analyzer</span>
+    </a>
+    <div class="d-flex align-items-center gap-3 small nav-links">
+      <a href="help.html" aria-current="page"><i class="bi bi-question-circle"></i> Help</a>
+      <a target="_blank" rel="noopener" href="#"><i class="bi bi-journal-text"></i> Paper</a>
+      <a id="link-github" target="_blank" rel="noopener" href="https://github.com/"><i class="bi bi-github"></i> GitHub</a>
+      <span class="text-secondary">ver.0</span>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="container container-narrow">
+    <h1>Help</h1>
+    <p>How to run ExCas-Analyzer, a worked example with its output, and how to read the results</p>
+  </div>
+</section>
+
+<main class="help">
+<section class="py-3 py-md-4">
+  <div class="container container-narrow">
+
+    <!-- Contents -->
+    <nav class="app-card p-3 p-md-4 mb-3 help-toc" aria-label="Contents">
+      <div class="section-title mb-2">Contents</div>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#tutorial">Tutorial: the HPRT1 example</a></li>
+        <li><a href="#sample-output">Sample output</a></li>
+        <li><a href="#own-data">Preparing your own data</a></li>
+        <li><a href="#interpreting">Interpreting the results</a>
+          <ol>
+            <li>5.1 <a href="#classes">Mutation classes</a></li>
+            <li>5.2 <a href="#table1">Summary table</a></li>
+            <li>5.3 <a href="#large-deletions">Large deletions and the control</a></li>
+            <li>5.4 <a href="#termins">Terminal insertions and clip rescue</a></li>
+            <li>5.5 <a href="#figures">Figures 1–7</a></li>
+            <li>5.6 <a href="#batch">Batch summary</a></li>
+            <li>5.7 <a href="#files">Result files</a></li>
+            <li>5.8 <a href="#report">The HTML report</a></li>
+          </ol>
+        </li>
+        <li><a href="#limitations">Limitations</a></li>
+        <li><a href="#licence">Licence</a></li>
+      </ol>
+    </nav>
+
+    <!-- 1. Overview -->
+    <div class="app-card p-3 p-md-4 mb-3">
+      <h2 id="overview">1. Overview</h2>
+      <p>ExCas-Analyzer quantifies the outcomes of a CRISPR cut from paired-end amplicon
+        sequencing on standard Illumina platforms. It counts wild-type reads, small insertions,
+        small deletions, substitutions and large deletions together, in long-range amplicons
+        of several kilobases.</p>
+      <p>Each analysis compares a Cas9-treated sample with an untreated control amplified with
+        the same primers. Large deletions that also appear in the control are treated as PCR
+        artefacts and left out, so what remains can be attributed to the nuclease.</p>
+      <p class="mb-0">The analysis runs inside your browser (WebAssembly). Your sequencing files
+        are not uploaded anywhere, and no account or login is needed.</p>
+    </div>
+
+    <!-- 2. Tutorial -->
+    <div class="app-card p-3 p-md-4 mb-3">
+      <h2 id="tutorial">2. Tutorial: the HPRT1 example</h2>
+      <p>The page comes with a simulated example: a 9,411 bp amplicon of <em>HPRT1</em>, an
+        SpCas9 target, and 40,115 read pairs each for an untreated control and a Cas9-treated
+        sample named SIM. It takes a few seconds to run.</p>
+
+      <h3><span class="help-step">Step 1.</span> Load the example</h3>
+      <p>On the <a href="index.html">main page</a>, click <strong>Load example · HPRT1</strong>
+        at the bottom of the form. It fills in the four FASTQ files, the sample name, the
+        reference sequence, the PAM (SpCas9, NGG), the target (AGCCCCCCTTGAGCACACAG) and the
+        gene name. <strong>Download example</strong> saves the same input files, so you can
+        look at them or upload them yourself.</p>
+      <figure class="help-figure">
+        <img src="help/step1-sequencing-data.png" width="1434" height="695" loading="lazy"
+             alt="The Sequencing Data section with the example's control and Cas9-treated FASTQ files filled in and the sample name SIM">
+        <figcaption>The control's Read 1 and Read 2 on the left; each Cas9-treated sample, with its
+          name and its reads, on the right.</figcaption>
+      </figure>
+      <figure class="help-figure">
+        <img src="help/step1-basic-information.png" width="1434" height="990" loading="lazy"
+             alt="The Basic Information section with the HPRT1 reference, the SpCas9 NGG PAM, the target sequence and the gene name, above the Load example, Reset and Submit buttons">
+        <figcaption>Reference, PAM, target and gene name. Detailed options stay at their defaults.</figcaption>
+      </figure>
+
+      <h3><span class="help-step">Step 2.</span> Submit and follow the progress</h3>
+      <p>Click <strong>Submit</strong>. The page first shows where it found the target: here
+        positions 4,653–4,672 on the reverse strand, with the cleavage site at 4,656 (the first
+        base after the cut). Check this before waiting for the results. The bars then follow the
+        alignment of each sample and the result files being written.</p>
+      <figure class="help-figure">
+        <img src="help/step2-progress.png" width="1434" height="669" loading="lazy"
+             alt="The Analysis Progress page showing the target, PAM and cleavage site in the reference, a table of their coordinates, and progress bars">
+        <figcaption>Target (green), PAM (yellow) and cleavage site (red triangle), with the
+          coordinates used.</figcaption>
+      </figure>
+
+      <h3><span class="help-step">Step 3.</span> Read the results</h3>
+      <p>The results start with the summary table, then Figures 1–7. In the example, the
+        Cas9-treated sample has 1,168 pairs used in the analysis: 15.2% wild type, 17.9% small
+        insertions, 19.8% small deletions and 41.8% large deletions. The control is 87.7% wild
+        type. <a href="#interpreting">Interpreting the results</a> explains each part.</p>
+
+      <h3><span class="help-step">Step 4.</span> Save the result files</h3>
+      <p><strong>Download all</strong> saves each sample's result files as one zip, here
+        <code>HPRT1_SIM.zip</code>. <strong>Individual files</strong> lists the zips, to save one
+        sample at a time. <strong>New analysis</strong>, at the bottom of the results, goes back
+        to the form; <strong>Reset</strong> clears it.</p>
+      <figure class="help-figure mb-0">
+        <img src="help/result-files.png" width="1434" height="176" loading="lazy"
+             alt="The Result Files section with Download all and Individual files buttons and the zip HPRT1_SIM.zip, 13 files, 2.3 MB">
+        <figcaption>One zip per sample; the size shown is before compression.</figcaption>
+      </figure>
+    </div>
+
+    <!-- 3. Sample output -->
+    <div class="app-card p-3 p-md-4 mb-3">
+      <h2 id="sample-output">3. Sample output</h2>
+      <p>The output of the HPRT1 example, run with the default options:</p>
+      <ul>
+        <li><a href="example/HPRT1_SIM_report.html" target="_blank" rel="noopener">HPRT1_SIM_report.html</a>
+          — the standalone HTML report; opens in the browser</li>
+        <li><a href="example/HPRT1_SIM.zip" download>HPRT1_SIM.zip</a>
+          (425 KB) — all 13 result files: the summary tables, the report and the SAM files</li>
+      </ul>
+      <p>And its input, the files that <strong>Load example</strong> uses:</p>
+      <ul>
+        <li><a href="testdata/HPRT1/HPRT1.fa" download>HPRT1.fa</a> — the reference</li>
+        <li><a href="testdata/HPRT1/HPRT1_con_1.fastq.gz" download>HPRT1_con_1.fastq.gz</a>,
+          <a href="testdata/HPRT1/HPRT1_con_2.fastq.gz" download>HPRT1_con_2.fastq.gz</a> — the control</li>
+        <li><a href="testdata/HPRT1/HPRT1_mut_1.fastq.gz" download>HPRT1_mut_1.fastq.gz</a>,
+          <a href="testdata/HPRT1/HPRT1_mut_2.fastq.gz" download>HPRT1_mut_2.fastq.gz</a> — the Cas9-treated sample</li>
+      </ul>
+      <p class="mb-0">Running the example yourself gives the same files, apart from the date in
+        the report. The reads are simulated, so the numbers show how the output looks, not the
+        editing outcome of a real experiment.</p>
+    </div>
+
+    <!-- 4. Own data -->
+    <div class="app-card p-3 p-md-4 mb-3">
+      <h2 id="own-data">4. Preparing your own data</h2>
+      <ul class="mb-0">
+        <li><strong>Sequencing data:</strong> paired-end FASTQ files, Read 1 and Read 2, for an
+          untreated control and for each Cas9-treated sample, all amplified with the same primers.
+          Plain or gzipped (<code>.gz</code>, including bgzip); bzip2, xz and zstd are not
+          supported.</li>
+        <li><strong>Batch mode:</strong> up to 4 Cas9-treated samples in one run, each compared
+          with the same control, reference and target. Sample names must be unique and cannot
+          contain <code>\ / : * ? " &lt; &gt; |</code>.</li>
+        <li><strong>Reference:</strong> the whole amplified sequence, 5' to 3', pasted or as a FASTA
+          file. A large deletion can only be found if both its ends lie inside the reference, so
+          include several kb on both sides of the cleavage site.</li>
+        <li><strong>Target:</strong> the protospacer, 5' to 3', without the PAM. Both strands are
+          searched, and it must occur once in the reference.</li>
+        <li><strong>PAM:</strong> used only to find the target and place the cut (for SpCas9, 3 bp
+          from the PAM). With <em>No PAM</em>, enter the cleavage offset under Detailed options.</li>
+        <li><strong>Gene and sample names:</strong> used as the SAM reference name and in the
+          output file names, <code>{gene}_{sample}_…</code>.</li>
+        <li><strong>Detailed options:</strong> the defaults suit most data. Each option is
+          described on the page, with its name in the command-line version.</li>
+        <li><strong>Memory:</strong> each run needs about its uncompressed FASTQ size plus 1 GB;
+          use a desktop browser for real data sets.</li>
+      </ul>
+    </div>
+
+    <!-- 5. Interpreting -->
+    <div class="app-card p-3 p-md-4 mb-3">
+      <h2 id="interpreting">5. Interpreting the results</h2>
+      <p>The results count <em>read pairs</em>: each pair is one DNA molecule from the amplicon,
+        and it gets one class. All coordinates are 1-based, and the cleavage site is the first
+        base after the cut.</p>
+
+      <h3 id="classes">5.1 Mutation classes</h3>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+          <thead class="table-light">
+            <tr><th>Class</th><th>Meaning</th><th>Its reads (treated / control)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>WT</td><td>The pair spans the cleavage site with no change within ±13 bp of it.</td>
+              <td><code>site_mut.sam</code> / <code>site_ctr.sam</code></td></tr>
+            <tr><td>Ins</td><td>A small insertion within ±13 bp of the cut.</td>
+              <td rowspan="3"><code>site_mut_sm.sam</code> / <code>site_ctr_sm.sam</code></td></tr>
+            <tr><td>Del</td><td>A deletion within ±13 bp of the cut, shorter than the large-deletion
+              length (50 bp by default).</td></tr>
+            <tr><td>Sub</td><td>Substitutions only, within ±13 bp of the cut.</td></tr>
+            <tr><td>LargeDel</td><td>A deletion of at least the large-deletion length, found either
+              inside one read (a split read) or as a gap between the mates, and not found in the
+              other sample. The paper's definition of a large deletion is 100 bp or more; set
+              <em>Large deletion minimum length</em> to 100 to use it.</td>
+              <td><code>mut_only.sam</code> / <code>ctr_only.sam</code></td></tr>
+            <tr><td>TermIns</td><td>A read soft-clipped at the cut: its end does not match the
+              reference, usually an insertion that runs off the end of the read, so its length and
+              exact position are unknown.</td>
+              <td><code>site_mut_clip.sam</code> / <code>site_ctr_clip.sam</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Large insertions, inversions and complex rearrangements are not called. Pairs carrying
+        them fall in none of the classes: they are left out, not counted as zero.</p>
+
+      <h3 id="table1">5.2 Summary table (Table 1)</h3>
+      <figure class="help-figure">
+        <img src="help/result-table1-figure1.png" width="1434" height="1004" loading="lazy"
+             alt="Table 1 with Control and Cas9-treated rows, and Figure 1, a bar chart of all and aligned read pairs per sample">
+        <figcaption>Table 1 and Figure 1 for the HPRT1 example.</figcaption>
+      </figure>
+      <ul>
+        <li><strong>Total reads:</strong> read pairs in the FASTQ files.</li>
+        <li><strong>Unmapped:</strong> pairs that could not be aligned to the reference, with their
+          share of Total reads. A high share can mean the reference does not match the amplified
+          region.</li>
+        <li><strong>Reads used in analysis:</strong> the pairs that can be classified, which are
+          the pairs spanning the cleavage site plus the large-deletion pairs. It is the sum of the
+          six classes and the denominator of their percentages. In a long amplicon it is far
+          smaller than the aligned pairs (here 1,168 of 38,172), because most pairs lie away from
+          the cut and say nothing about it.</li>
+        <li><strong>WT … TermIns:</strong> each class's pairs, as a share of Reads used.</li>
+      </ul>
+      <p><strong>Compare the treated row with the control row.</strong> The control shows the
+        background from sequencing errors and PCR: a class at a similar level in both rows is not
+        evidence of editing. In the example, substitutions are 3.6% of the control and 0.7% of the
+        treated sample, so they are background, while small indels and large deletions appear
+        only in the treated sample.</p>
+      <p class="mb-0"><strong>Editing efficiency.</strong> The share of pairs that are not WT is
+        the report's <em>Edited</em> figure (84.8% in the example). It includes substitutions and
+        terminal insertions, so read it against the control (12.3% not WT here), or add up only
+        the classes you count as edits.</p>
+
+      <h3 id="large-deletions">5.3 Large deletions and the control</h3>
+      <ul>
+        <li><strong>Split reads:</strong> one read aligns on both sides of the deletion, so its
+          length is exact.</li>
+        <li><strong>Mate gap:</strong> neither read crosses the deletion, but the gap between the
+          two mates is at least <em>Minimum mate gap</em> (400 bp by default). The length is
+          estimated as the pair's span less the median insert size of the WT pairs, and Figure 5
+          marks it as estimated.</li>
+        <li><strong>Common with the control:</strong> a treated deletion that the control also
+          has is judged a PCR artefact and removed. With the default pair-based test, it is common
+          when at least 4 control pairs have both breakpoints within max(20 bp, 2% of its length)
+          and their frequency is at least half the treated one. The k-means test, the paper's
+          method, compares cluster centres instead and can vary between runs for deletions over
+          2 kb. The note under Figure 2 says which test ran.</li>
+        <li><strong>What is left out:</strong> the removed pairs are not in Reads used. Their count
+          is in <code>mutation_summary.tsv</code> as <code>large_deletion_common_excluded</code>
+          (235 in the example), and their reads are in <code>mut_common.sam</code>. The same
+          applies the other way round to the control row.</li>
+        <li><strong>Size limit:</strong> deletions whose read ends lie more than
+          <em>Cleavage-site tolerance</em> (8,000 bp by default) from the cut are not called.</li>
+        <li><strong>Above 2 kb:</strong> the split between treated-only and common deletions is
+          sensitive to the input and does not reproduce exactly from a single run. When you report
+          this size range, give its spread across replicates.</li>
+      </ul>
+
+      <h3 id="termins">5.4 Terminal insertions and clip rescue</h3>
+      <ul class="mb-0">
+        <li><strong>Clip rescue</strong> (on by default) re-calls a soft clip within 13 bp of a read
+          end as a small indel when the same allele is seen with full anchors in at least 3 pairs
+          of the sample. The note under Figure 2 gives how many were re-called (33 of 87 in the
+          treated example). The rest stay TermIns.</li>
+        <li><strong>With / Without TermIns</strong>, above the summary table, decides whether those
+          pairs count. Without them, they leave Reads used, and the other classes, the figures,
+          the viewer and the batch summary are recomputed. The core's files do not change; the
+          zip gains <code>{gene}_{sample}_mutation_summary_no_termins.tsv</code>. Say which one
+          you report.</li>
+      </ul>
+
+      <h3 id="figures">5.5 Figures 1–7</h3>
+      <p>Figures 3–6 are for the sample picked with <em>Control / Cas9-treated</em> above
+        Figure 3; Figures 3, 4 and 6 also for the window picked there (±15, ±30 or ±60 bp around
+        the cut). A red dashed line marks the cleavage site.</p>
+      <p><strong>Figure 1. Alignment summary</strong> (above, with Table 1): all read pairs and
+        the aligned ones, per sample, on a linear or log scale. The two bars of a sample should be
+        close; a large gap means many unmapped pairs.</p>
+
+      <figure class="help-figure">
+        <img src="help/result-figure2.png" width="1434" height="643" loading="lazy"
+             alt="Figure 2, two pie charts of the mutation classes, control and Cas9-treated">
+      </figure>
+      <p><strong>Figure 2. Mutation patterns:</strong> the six classes of Table 1 as pies, one per
+        sample. The note below it gives the clip-rescue counts and the common-with-control test.</p>
+
+      <figure class="help-figure">
+        <img src="help/result-figure3.png" width="1434" height="797" loading="lazy"
+             alt="Figure 3, stacked bars of base composition at each position around the cut, with an insertion panel below">
+      </figure>
+      <p><strong>Figure 3. Nucleotide composition:</strong> for each base around the cut, the share
+        of reads showing A, C, G or T, a deletion at the cut (black), or a long split-read deletion
+        spanning the base (grey); insertions are in the lower panel, on their own scale. The blue
+        bar on top marks the ±13 bp window. A wild-type position is one colour, the reference
+        base. It draws every read in the SAM files, including the large deletions also found in
+        the control, so it covers more pairs than Reads used (1,403 in the example). With fewer
+        than 100 reads at a base, the note warns that the percentages are not stable.</p>
+
+      <figure class="help-figure">
+        <img src="help/result-figure4.png" width="1434" height="797" loading="lazy"
+             alt="Figure 4, line chart of insertion, deletion and substitution frequency by reference position">
+      </figure>
+      <p><strong>Figure 4. Mutation position:</strong> how often each kind of change occurs at each
+        position, as a share of the reads covering it. Shaded: the ±13 bp window counted as
+        on-target. Cas9-induced indels peak at the cut, as here; changes spread evenly along the
+        window, or at the same level in the control, are background.</p>
+
+      <figure class="help-figure">
+        <img src="help/result-figure5.png" width="1434" height="691" loading="lazy"
+             alt="Figure 5, bar charts of insertion and deletion lengths">
+      </figure>
+      <p><strong>Figure 5. Insertion and deletion size</strong> (the <em>Insertion / deletion
+        size</em> tab): how often each length occurs, as a share of Reads used, one length per
+        pair. Lengths below the large-deletion length have a bar each; longer ones are grouped
+        (100–199 bp, …, 2–5 kb). Terminal insertions have their own bar, as their length is
+        unknown. Large deletions are split into exact lengths from split reads and estimates from
+        mate gaps (light pink). Deletions also found in the control are left out, as in Table 1.</p>
+
+      <figure class="help-figure">
+        <img src="help/result-figure6.png" width="1434" height="634" loading="lazy"
+             alt="Figure 6, lollipop charts of mean insertion and deletion length by reference position">
+      </figure>
+      <p><strong>Figure 6. Indel size by position:</strong> the mean length of the indels at each
+        position. Height is length, not frequency. Deletions use a log axis: indigo at the cut,
+        grey for split-read deletions spanning the base.</p>
+
+      <figure class="help-figure">
+        <img src="help/result-figure7.png" width="1434" height="1250" loading="lazy"
+             alt="Figure 7, the alignment viewer showing treated-only large deletions as reads joined by red lines across the cleavage site">
+        <figcaption>The top of the viewer; it lists every pair of the track.</figcaption>
+      </figure>
+      <p><strong>Figure 7. Alignment viewer:</strong> the reads of one SAM file at a time, picked
+        with the buttons above it (each with its pair count):</p>
+      <ul>
+        <li><em>Treated-only large deletions</em> (<code>mut_only.sam</code>), judged CRISPR-induced</li>
+        <li><em>Common (removed)</em> (<code>mut_common.sam</code>), also in the control</li>
+        <li><em>Control-only</em> (<code>ctr_only.sam</code>)</li>
+        <li><em>Treated reads at the cut</em> (<code>site_mut.sam</code>), the WT pairs</li>
+        <li><em>Treated small indels</em> (<code>site_mut_sm.sam</code>)</li>
+        <li><em>Treated terminal insertions (clip)</em> (<code>site_mut_clip.sam</code>), hidden
+          without TermIns</li>
+      </ul>
+      <p>Each row is one pair (with <em>Group mates</em>); a thin line is a deletion, thick red a
+        deletion of 50 bp or more, and a purple tick an insertion; the blue band is the
+        protospacer. <em>Colour by</em> picks the breakpoint group the tool assigned (Cluster),
+        large deletions only, or strand. Hover over a read for its details; scroll to zoom, drag
+        to pan, <em>Fit</em> to see the whole reference. A convincing large deletion has reads
+        joined across the cut, with breakpoints shared by several pairs.</p>
+
+      <h3 id="batch">5.6 Batch summary</h3>
+      <p>With more than one treated sample, the results start with a batch summary: one row per
+        sample, with the same columns as Table 1. Click a row, or pick a sample, to show its
+        results below. A failed sample shows why; the others still finish.
+        <strong>Download batch</strong> saves <code>{gene}_batch_results.zip</code>, holding
+        <code>batch_summary.tsv</code> and a folder of result files per sample.</p>
+
+      <h3 id="files">5.7 Result files</h3>
+      <p>Each sample's zip, <code>{gene}_{sample}.zip</code>, holds files named
+        <code>{gene}_{sample}_{suffix}</code>:</p>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+          <thead class="table-light"><tr><th>Suffix</th><th>Contents</th></tr></thead>
+          <tbody>
+            <tr><td><code>mutation_summary.tsv</code></td><td>Pairs and percentage per class, per
+              sample: the numbers of Table 1. Rows whose percent is <code>NA</code> are counts
+              outside the percentages: <code>not_covered_excluded</code> (pairs left out as not
+              covering the cleavage site), <code>large_deletion_common_excluded</code> and
+              <code>aligned_pairs_all_positions</code>.</td></tr>
+            <tr><td><code>mutation_summary_no_termins.tsv</code></td><td>The same without terminal
+              insertions; only when <em>Without TermIns</em> is selected.</td></tr>
+            <tr><td><code>report.html</code></td><td>The standalone report (<a href="#report">5.8</a>).</td></tr>
+            <tr><td><code>report.tsv</code></td><td>The run's parameters, the count of each class,
+              and the length histograms behind the report. Its coordinates are the core's, 0-based:
+              <code>targetst 4652</code> is position 4,653.</td></tr>
+            <tr><td><code>mut_only.sam</code>, <code>ctr_only.sam</code></td><td>Large deletions found
+              only in that sample.</td></tr>
+            <tr><td><code>mut_common.sam</code>, <code>ctr_common.sam</code></td><td>Large deletions
+              found in both samples, removed.</td></tr>
+            <tr><td><code>site_mut.sam</code>, <code>site_ctr.sam</code></td><td>WT pairs spanning the
+              cleavage site.</td></tr>
+            <tr><td><code>site_mut_sm.sam</code>, <code>site_ctr_sm.sam</code></td><td>Small indels and
+              substitutions within ±13 bp of the cut.</td></tr>
+            <tr><td><code>site_mut_clip.sam</code>, <code>site_ctr_clip.sam</code></td><td>Pairs
+              soft-clipped at the cut (terminal insertions).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The SAM files open in IGV or any SAM viewer, with the reference named after the gene.
+        Each record carries the call in the tag <code>XV:Z</code> (<code>WT</code>,
+        <code>INS</code>, <code>DEL</code>, <code>SUB</code>, <code>CLIP</code>,
+        <code>LDEL_ONLY</code> or <code>LDEL_COMMON</code>); large deletions also carry their
+        breakpoint group in <code>YC:Z</code>, and pairs re-called by clip rescue
+        <code>XR:Z</code>. Empty files are not included, so a sample with nothing in a class has
+        fewer files.</p>
+
+      <h3 id="report">5.8 The HTML report</h3>
+      <p>The report (<a href="example/HPRT1_SIM_report.html" target="_blank" rel="noopener">example</a>)
+        opens offline in any browser and is in English. Its sections:</p>
+      <ul class="mb-0">
+        <li><strong>Summary:</strong> aligned pairs; pairs classified (spanning the cut site);
+          <em>Edited</em>, the share that is not wild type; the longest insertion; and the reads
+          with insertions of 8 bp or more.</li>
+        <li><strong>Indel size spectrum:</strong> indels within ±13 bp of the cut, counted by length,
+          deletions on the left and insertions on the right.</li>
+        <li><strong>Classes per sample:</strong> the class shares as stacked bars, also as a table.</li>
+        <li><strong>Large deletion sizes:</strong> split-read deletion lengths, treated and control
+          side by side, so the artefact level can be seen. It marks the range above 2 kb, where
+          results need replicates (<a href="#large-deletions">5.3</a>).</li>
+        <li><strong>Insertion sequences of 8 bp and up:</strong> each long inserted sequence,
+          counted directly in the raw treated and control reads, per million reads. The verdict:
+          <em>Treated only</em>; <em>Also in the control · artefact</em>, co-amplified background
+          rather than a CRISPR product; or <em>Weak evidence</em>, fewer than 5 raw reads. The
+          control filter of 5.3 applies to large deletions only, so this is where insertions are
+          checked.</li>
+      </ul>
+    </div>
+
+    <!-- 6. Limitations -->
+    <div class="app-card p-3 p-md-4 mb-3">
+      <h2 id="limitations">6. Limitations</h2>
+      <ul class="mb-0">
+        <li>Not detected: large insertions, inversions, complex events, and precise or partial
+          editing.</li>
+        <li>Batch mode analyses the control again with each treated sample, as the core compares the
+          two in one run.</li>
+        <li>Each run uses one processor thread; a batch is faster only by running samples side by
+          side.</li>
+        <li>The analysis works offline, but the charts and styling load from public CDNs.</li>
+      </ul>
+    </div>
+
+    <!-- 7. Licence -->
+    <div class="app-card p-3 p-md-4">
+      <h2 id="licence">7. Licence</h2>
+      <p>ExCas-Analyzer is free to use, with no registration, for non-commercial and commercial
+        use alike.</p>
+      <ul class="mb-0">
+        <li><strong>Software:</strong> licensed under the
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU
+          General Public License v3.0</a> (GPL-3.0). You may run, study, share and modify it; if you
+          distribute it, or a version you changed, you must do so under the same licence and with
+          its source code. The full text is in the <code>LICENSE</code> file that comes with the
+          source code.</li>
+        <li><strong>Help pages:</strong> this page, its text and screenshots, are licensed under
+          <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">Creative
+          Commons Attribution-ShareAlike 4.0 International</a> (CC BY-SA 4.0). You may share and
+          adapt them, giving appropriate credit and sharing your adaptations under the same
+          licence.</li>
+        <li><strong>Third-party components</strong> keep their own licences: Bootstrap, Bootstrap
+          Icons, Plotly.js and fflate (MIT), and the Inter and IBM Plex Mono fonts (SIL Open Font
+          License 1.1).</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+</main>
+
+<footer class="site-footer">
+  <div class="container container-narrow">
+    <p class="mb-1">This help page is licensed under
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>;
+      the software under
+      <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a>.</p>
+    <p class="mb-0 text-muted">
+      <a id="link-issues" href="https://github.com/" target="_blank" rel="noopener">Report an issue</a>
+    </p>
+  </div>
+</footer>
+
+<script>
+  // On <owner>.github.io/<repo>/, point the GitHub and issue links at that repository,
+  // as app.js does on the main page. Elsewhere they keep the links above.
+  (function linkRepository() {
+    var host = /^([a-z0-9-]+)\.github\.io$/i.exec(location.hostname);
+    if (!host) return;
+    var first = location.pathname.split('/').filter(Boolean)[0];
+    var repo  = first && !/\.html?$/i.test(first) ? first : host[1] + '.github.io';
+    var url   = 'https://github.com/' + host[1] + '/' + repo;
+    var gh = document.getElementById('link-github');
+    var issues = document.getElementById('link-issues');
+    if (gh) gh.href = url;
+    if (issues) issues.href = url + '/issues';
+  })();
+</script>
+</body>
+</html>

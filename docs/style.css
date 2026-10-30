@@ -239,11 +239,6 @@ body {
   line-height: 1.6;
 }
 
-/* ---- Small screens ---- */
-@media (max-width: 700px) {
-  .hero h1 { font-size: 1.3rem; }
-}
-
 /* ---- Alignment viewer and its hover tooltip ---- */
 #viewer-mount canvas { display: block; width: 100%; border: 1px solid var(--border);
                        border-radius: 6px; background: #fff; cursor: grab; }
@@ -258,3 +253,19 @@ body {
 }
 #viewer-tip .r { display: flex; gap: .75rem; justify-content: space-between; }
 #viewer-tip .r span:first-child { color: #9ca3af; }
+
+/* ---- Help page (help.html) ---- */
+.nav-links a[aria-current="page"] { color: var(--accent); }
+.help h2 { font-size: 1.15rem; font-weight: 700; margin: 0 0 .75rem; scroll-margin-top: 4.5rem; }
+.help h3 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 .5rem; scroll-margin-top: 4.5rem; }
+.help p, .help li, .help td, .help th { font-size: .9rem; line-height: 1.65; }
+.help .table { margin-bottom: .75rem; }
+.help .table th { white-space: nowrap; }
+.help-toc ol { margin: 0; padding-left: 1.25rem; }
+.help-toc ol ol { list-style: none; padding-left: .75rem; }   /* numbered in the text, 5.1 … */
+.help-toc a { text-decoration: none; }
+.help-figure { margin: 1rem 0 1.25rem; text-align: center; }   /* centred, 80% of the card's width */
+.help-figure img { display: block; max-width: 80%; height: auto; margin: 0 auto;
+                   border: 1px solid var(--border); border-radius: 8px; }
+.help-figure figcaption { font-size: .8rem; color: var(--text-secondary); margin-top: .4rem; }
+.help-step { font-weight: 600; color: var(--accent); }

@@ -71,6 +71,7 @@ ExCas-Analyzer has **2 usage modes**:
 4. Enter the gene name, then click **Submit**.
 
 - **Reset** clears every input and puts the options back to their defaults; refreshing the page also starts from an empty form
+- **Help**, at the top of the page, opens `help.html` in a new tab: a tutorial with the example's output, and how to interpret the results
 
 **Batch mode**
 - Click **Add treated sample** for each further Cas9-treated sample (up to 4), and give each a name
@@ -117,6 +118,7 @@ node local/mcp/server.mjs
 - Click **Load example · HPRT1**, then **Submit**
 - Runs a simulated HPRT1 amplicon (40,115 read pairs per sample)
 - Results appear on the page; **Download all** saves the result files as one zip, `{gene}_{sample}.zip`
+- The output of this run is in `docs/example/`: `HPRT1_SIM_report.html` and `HPRT1_SIM.zip`
 
 ### Example 2: MCP server
 
@@ -242,6 +244,9 @@ MCP runs also save:
 
 ```
 docs/                 web page served by GitHub Pages
+  help.html           help page: tutorial, how to read the results, licences
+  help/               the help page's screenshots
+  example/            the HPRT1 example's output (report and zip), linked from the help page
   kmer_align.wasm     the analysis core (WebAssembly)
   report-en.js        puts the core's HTML report into English
   testdata/HPRT1/     example data for Load example
@@ -251,5 +256,13 @@ local/                files for running locally
   mcp/                MCP server
 package.json          npm run serve / npm run mcp
 .mcp.json             registers the MCP server for Claude Code
-LICENSE               licence
+LICENSE               GPL-3.0 licence text
 ```
+
+---
+
+## License
+
+- Software: [GNU General Public License v3.0](LICENSE) (GPL-3.0)
+- Help pages (`docs/help.html` and `docs/help/`): [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0)
+- Third-party components keep their own licences: Bootstrap, Bootstrap Icons, Plotly.js and fflate (MIT), the Inter and IBM Plex Mono fonts (SIL Open Font License 1.1)

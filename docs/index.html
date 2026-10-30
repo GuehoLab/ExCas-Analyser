@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- No phone layout: a phone shows the desktop page, since real data needs a computer's memory -->
+  <meta name="viewport" content="width=1024">
   <title>ExCas-Analyzer — Browser-based CRISPR Large Deletion Quantification</title>
   <meta name="description" content="ExCas-Analyzer: a fully client-side tool for quantifying CRISPR-induced large deletions from paired-end amplicon sequencing. Your data never leaves the browser.">
   <!-- Inline, so the browser does not request a /favicon.ico that is not there. -->
@@ -26,6 +27,8 @@
       <span>ExCas-Analyzer</span>
     </a>
     <div class="d-flex align-items-center gap-3 small nav-links">
+      <!-- A new tab, so a finished analysis is still here (results live only in this page) -->
+      <a target="_blank" rel="noopener" href="help.html"><i class="bi bi-question-circle"></i> Help</a>
       <a target="_blank" rel="noopener" href="#"><i class="bi bi-journal-text"></i> Paper</a>
       <a id="link-github" target="_blank" rel="noopener" href="https://github.com/"><i class="bi bi-github"></i> GitHub</a>
       <span class="text-secondary">ver.0</span>
@@ -37,7 +40,8 @@
 <section class="hero">
   <div class="container container-narrow">
     <h1>ExCas-Analyzer</h1>
-    <p>A Javascript based browser tool for paired-end amplicon sequencing</p>
+    <p>A web tool for quantifying CRISPR editing outcomes, including large deletions<br>
+       Detects large deletions and small indels together in long-range amplicons sequenced on standard Illumina platforms</p>
   </div>
 </section>
 
@@ -92,7 +96,8 @@
                   <div class="mut-row-head"><span class="mut-row-title">Sample 1</span></div>
 
                   <label class="form-label" for="samplename">Sample name</label>
-                  <input type="text" id="samplename" class="form-control form-control-sm mb-2 mut-name" value="HEK293T">
+                  <input type="text" id="samplename" class="form-control form-control-sm mb-2 mut-name"
+                         placeholder="Enter a name for this sample, e.g. HEK293T">
 
                   <label class="form-label" for="file-mut-r1">Read 1 <span class="sub">(fastq)</span></label>
                   <div class="file-box mb-2">
@@ -178,7 +183,7 @@
 
             <div class="col-12 col-md-6">
               <label class="form-label" for="genename">Gene name</label>
-              <input type="text" id="genename" class="form-control form-control-sm" value="HPRT1">
+              <input type="text" id="genename" class="form-control form-control-sm" placeholder="Enter the gene name, e.g. HPRT1">
               <div class="form-help">Used as the SAM reference name and, with each sample name, in
                 output file names.</div>
             </div>
@@ -324,7 +329,8 @@
             </div>
 
             <label class="form-label">Sample name</label>
-            <input type="text" class="form-control form-control-sm mb-2 mut-name">
+            <input type="text" class="form-control form-control-sm mb-2 mut-name"
+                   placeholder="Enter a name for this sample, e.g. HEK293T">
 
             <label class="form-label">Read 1 <span class="sub">(fastq)</span></label>
             <div class="file-box mb-2">
